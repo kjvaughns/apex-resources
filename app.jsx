@@ -712,16 +712,22 @@ function App() {
 
   useEffect(() => {
     if (!authed) return;
-    fetch("/api/data")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.recordings) window.APEX_RECORDINGS = d.recordings;
-        if (d.presenters) window.APEX_PRESENTERS = d.presenters;
-        if (d.resources) window.APEX_RESOURCES = d.resources;
-        if (d.quickLinks) window.APEX_QUICKLINKS = d.quickLinks;
-        setApiRev((n) => n + 1);
-      })
-      .catch(() => {});
+    const load = () => {
+      fetch("/api/data?t=" + Date.now())
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.recordings) window.APEX_RECORDINGS = d.recordings;
+          if (d.presenters) window.APEX_PRESENTERS = d.presenters;
+          if (d.resources) window.APEX_RESOURCES = d.resources;
+          if (d.quickLinks) window.APEX_QUICKLINKS = d.quickLinks;
+          setApiRev((n) => n + 1);
+        })
+        .catch(() => {});
+    };
+    load();
+    const onVisible = () => { if (!document.hidden) load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [authed]);
 
   const rootStyle = { "--gold": t.accent };

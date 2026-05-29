@@ -1,5 +1,5 @@
 // APEX Admin — Recorded Presentations (presenters + recordings)
-const { useState: useStateR, useMemo: useMemoR, useEffect: useEffectR } = React;
+const { useState: useStateR, useMemo: useMemoR, useEffect: useEffectR, useRef: useRefR } = React;
 const Ir = window.Icons;
 
 const REC_FMT = {
@@ -247,6 +247,71 @@ function RecordingsView({ recordings, setRecordings, presenters, setPresenters, 
   const [dragId, setDragId] = useStateR(null);
   const [overId, setOverId] = useStateR(null);
   const [pModal, setPModal] = useStateR(false);
+  const [tsData, setTsData] = useStateR({});
+  const [tsRunning, setTsRunning] = useStateR(false);
+  const [tsLoaded, setTsLoaded] = useStateR(false);
+  const tsRef = useRefR({});
+  const pollRef = useRefR(null);
+
+  useEffectR(() => {
+    fetch("/api/transcripts")
+      .then((r) => r.json())
+      .then((d) => { tsRef.current = d || {}; setTsData(d || {}); setTsLoaded(true); })
+      .catch(() => setTsLoaded(true));
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, []);
+
+  const saveTs = (recId, entry) => {
+    tsRef.current = { ...tsRef.current, [recId]: entry };
+    setTsData({ ...tsRef.current });
+    fetch("/api/transcripts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recId, entry }),
+    }).catch(() => {});
+  };
+
+  const pollOnce = async () => {
+    const pending = Object.entries(tsRef.current).filter(
+      ([, v]) => ["queued", "processing"].includes(v?.status) && v?.jobId
+    );
+    if (pending.length === 0) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      setTsRunning(false);
+      return;
+    }
+    for (const [recId, entry] of pending) {
+      try {
+        const r = await fetch(`/api/transcribe-status?id=${entry.jobId}`);
+        const data = await r.json();
+        if (data.status && data.status !== entry.status) saveTs(recId, { ...entry, ...data });
+      } catch {}
+    }
+  };
+
+  const runAll = async () => {
+    setTsRunning(true);
+    for (const rec of recordings.filter((r) => r.source)) {
+      const ex = tsRef.current[rec.id];
+      if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) continue;
+      try {
+        saveTs(rec.id, { status: "submitting" });
+        const r = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: rec.source }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const { id } = await r.json();
+        saveTs(rec.id, { status: "queued", jobId: id });
+      } catch (e) {
+        saveTs(rec.id, { status: "error", error: e.message });
+      }
+    }
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(pollOnce, 15000);
+    pollOnce();
+  };
 
   const pById = useMemoR(() => Object.fromEntries(presenters.map((p) => [p.id, p])), [presenters]);
   const canReorder = sel === "all" && !query.trim();
@@ -295,6 +360,28 @@ function RecordingsView({ recordings, setRecordings, presenters, setPresenters, 
         <button className="btn btn-sm" onClick={() => setPModal(true)}><Ir.users />Manage presenters</button>
       </div>
 
+      {(() => {
+        const withSrc = recordings.filter((r) => r.source);
+        const done = withSrc.filter((r) => tsData[r.id]?.status === "completed").length;
+        const pending = withSrc.filter((r) => ["queued","processing","submitting"].includes(tsData[r.id]?.status)).length;
+        const errors = withSrc.filter((r) => tsData[r.id]?.status === "error").length;
+        const allDone = done === withSrc.length && withSrc.length > 0;
+        return (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"6px 0 10px", borderBottom:"1px solid var(--line)", marginBottom:12 }}>
+            <span style={{ fontSize:13, color:"var(--muted)" }}>
+              Transcripts:&nbsp;
+              <strong style={{ color:"var(--text)" }}>{done}/{withSrc.length}</strong> complete
+              {pending > 0 && <span style={{ color:"var(--gold)", marginLeft:8 }}>· {pending} pending</span>}
+              {errors > 0 && <span style={{ color:"var(--red)", marginLeft:8 }}>· {errors} error{errors > 1 ? "s":""}</span>}
+            </span>
+            <button className={"btn btn-sm" + (allDone ? " btn-ghost" : " btn-gold")}
+              onClick={runAll} disabled={tsRunning || !tsLoaded}>
+              {tsRunning ? `Transcribing… ${done}/${withSrc.length}` : allDone ? "✓ All done" : "Transcribe All"}
+            </button>
+          </div>
+        );
+      })()}
+
       <div className="tbl-tools">
         <div className="tbl-search">
           <Ir.search />
@@ -312,6 +399,7 @@ function RecordingsView({ recordings, setRecordings, presenters, setPresenters, 
               <th style={{ width: 110 }}>Format</th>
               <th style={{ width: 130 }}>Date</th>
               <th style={{ width: 120 }}>Status</th>
+              <th style={{ width: 110 }}>Transcript</th>
               <th style={{ width: 96, textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
@@ -353,6 +441,13 @@ function RecordingsView({ recordings, setRecordings, presenters, setPresenters, 
                   <td><span className="tbadge" style={{ "--ac": fm.color }}><FmtIco />{fm.label}</span></td>
                   <td className="td-date">{rfmtDate(r.date)}</td>
                   <td><span className={"status " + (r.status === "published" ? "status-pub" : "status-draft")}><span className="status-dot" />{r.status === "published" ? "Published" : "Draft"}</span></td>
+                  <td>{(() => {
+                    const ts = tsData[r.id];
+                    if (!ts) return <span style={{ color:"var(--muted-2)", fontSize:12 }}>—</span>;
+                    if (ts.status === "completed") return <span style={{ color:"#46A758", fontSize:12, fontWeight:600 }}>✓ Done</span>;
+                    if (ts.status === "error") return <span style={{ color:"var(--red)", fontSize:12 }}>Error</span>;
+                    return <span style={{ color:"var(--gold)", fontSize:12, textTransform:"capitalize" }}>{ts.status}</span>;
+                  })()}</td>
                   <td>
                     <div className="row-actions">
                       <button className="icon-btn" onClick={() => onEdit(r)} title="Edit"><Ir.edit /></button>
