@@ -110,9 +110,9 @@ const NAV = [
   { sect: "Site Settings" },
   { key: "quicklinks", label: "Quick Links", icon: "link" },
 ];
-function Sidebar({ route, onNav, onLogout, count }) {
+function Sidebar({ route, onNav, onLogout, count, drawerOpen, onCloseDrawer }) {
   return (
-    <aside className="side">
+    <aside className={"side" + (drawerOpen ? " side-drawer-open" : "")}>
       <div className="side-brand">
         <img src="../assets/apex-logo-trans.png" alt="APEX" className="side-logo" />
         <span className="side-tag">Admin</span>
@@ -123,7 +123,7 @@ function Sidebar({ route, onNav, onLogout, count }) {
           const C = I[n.icon];
           return (
             <button key={n.key} className={"side-link" + (route === n.key ? " side-link-on" : "")}
-              onClick={() => onNav(n.key)}>
+              onClick={() => { onNav(n.key); onCloseDrawer(); }}>
               <C />{n.label}
             </button>
           );
@@ -137,7 +137,7 @@ function Sidebar({ route, onNav, onLogout, count }) {
             <div className="side-user-role">{count} items live</div>
           </span>
         </div>
-        <button className="side-logout" onClick={onLogout}><I.logout />Sign out</button>
+        <button className="side-logout" onClick={() => { onLogout(); onCloseDrawer(); }}><I.logout />Sign out</button>
       </div>
     </aside>
   );
@@ -720,6 +720,12 @@ function App() {
   const [presetFilter, setPresetFilter] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const [toasts, setToasts] = useState([]);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  useEffect(() => {
+    document.body.style.overflow = drawerOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [drawerOpen]);
 
   const pw = () => { try { return sessionStorage.getItem("apex_admin_pw") || ""; } catch (e) { return ""; } };
 
@@ -891,9 +897,12 @@ function App() {
 
   return (
     <div className="shell" style={rootStyle}>
-      <Sidebar route={sideRoute} onNav={nav} onLogout={logout} count={resources.length + recordings.length} />
+      <Sidebar route={sideRoute} onNav={nav} onLogout={logout} count={resources.length + recordings.length}
+        drawerOpen={drawerOpen} onCloseDrawer={closeDrawer} />
       <div className="main">
         <header className="topbar">
+          <button className="hamburger-btn" onClick={() => setDrawerOpen(true)}
+            aria-label="Open navigation" aria-expanded={drawerOpen}>☰</button>
           <div className="topbar-title">
             <span className="topbar-crumb">{meta.crumb}</span>
             <span className="topbar-h">{meta.h}</span>
@@ -932,6 +941,7 @@ function App() {
         )}
       </div>
 
+      {drawerOpen && <div className="drawer-backdrop" onClick={closeDrawer} aria-hidden="true" />}
       {toDelete && <DeleteModal item={toDelete.item} label={toDelete.kind} onConfirm={doDelete} onClose={() => setToDelete(null)} />}
       <Toasts items={toasts} />
 
