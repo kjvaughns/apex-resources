@@ -24,9 +24,8 @@ module.exports = async (req, res) => {
         return resolve();
       }
       try {
-        const blob = await put(fileName, fileBuffer, { access: "private", contentType: mimeType });
-        const proxyUrl = "/api/file?url=" + encodeURIComponent(blob.url);
-        res.json({ ok: true, url: proxyUrl });
+        const blob = await put(fileName, fileBuffer, { access: "public", contentType: mimeType });
+        res.json({ ok: true, url: blob.url });
       } catch (e) {
         console.error("[upload]", e.message);
         res.status(500).json({ ok: false, error: e.message });
