@@ -49,30 +49,57 @@ function useTranscriptEntry(recId) {
   return entry;
 }
 
-// On login: submits all recordings that don't have a transcript yet, then polls every 15s.
+function dbSaveTranscript(recId, entry) {
+  fetch("/api/transcripts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recId, entry }),
+  }).catch(() => {});
+}
+
+// On login: syncs transcript DB → localStorage, submits only uncached recordings, polls every 15s.
 function useAutoTranscribe(authed) {
   useEffect(() => {
     if (!authed) return;
-    const recs = (window.APEX_RECORDINGS || []).filter((r) => r.video);
-    const store = tsLoad();
-    recs.forEach(async (rec) => {
-      const ex = store[rec.id];
-      if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) return;
-      if (ex?.status === "error") return;
+    const run = async () => {
+      // 1. Pull stored transcripts from DB and merge into localStorage
       try {
-        tsSet(rec.id, { status: "submitting" });
-        const res = await fetch("/api/transcribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: rec.video }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const { id } = await res.json();
-        tsSet(rec.id, { status: "queued", jobId: id });
-      } catch (e) {
-        tsSet(rec.id, { status: "error", error: e.message });
+        const dbTs = await fetch("/api/transcripts").then((r) => r.json());
+        const store = tsLoad();
+        for (const [recId, data] of Object.entries(dbTs || {})) {
+          if (!store[recId] || data.status === "completed") {
+            store[recId] = data;
+            window.dispatchEvent(new CustomEvent("apex_ts", { detail: { recId, data } }));
+          }
+        }
+        tsSave(store);
+      } catch {}
+
+      // 2. Submit recordings not already stored in DB or localStorage
+      const recs = (window.APEX_RECORDINGS || []).filter((r) => r.video);
+      const store = tsLoad();
+      for (const rec of recs) {
+        const ex = store[rec.id];
+        if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) continue;
+        if (ex?.status === "error") continue;
+        try {
+          tsSet(rec.id, { status: "submitting" });
+          const res = await fetch("/api/transcribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: rec.video }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const { id } = await res.json();
+          const entry = { status: "queued", jobId: id };
+          tsSet(rec.id, entry);
+          dbSaveTranscript(rec.id, entry);
+        } catch (e) {
+          tsSet(rec.id, { status: "error", error: e.message });
+        }
       }
-    });
+    };
+    run();
   }, [authed]);
 
   useEffect(() => {
@@ -86,7 +113,11 @@ function useAutoTranscribe(authed) {
         try {
           const res = await fetch(`/api/transcribe-status?id=${entry.jobId}`);
           const data = await res.json();
-          if (data.status && data.status !== entry.status) tsSet(recId, { ...entry, ...data });
+          if (data.status && data.status !== entry.status) {
+            const updated = { ...entry, ...data };
+            tsSet(recId, updated);
+            dbSaveTranscript(recId, updated);
+          }
         } catch {}
       }
     };

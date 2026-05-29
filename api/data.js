@@ -61,6 +61,11 @@ module.exports = async (req, res) => {
       kv.get("apex:resources"),
     ]);
 
+    // Auto-seed on first access
+    if (kvRecs === null) kv.set("apex:recordings", defaults.recordings).catch(() => {});
+    if (kvPres === null) kv.set("apex:presenters", defaults.presenters).catch(() => {});
+    if (kvRes === null) kv.set("apex:resources", defaults.resources).catch(() => {});
+
     const recordings = (kvRecs || defaults.recordings)
       .filter((r) => r.status === "published")
       .map(toPublicRec);
@@ -73,7 +78,6 @@ module.exports = async (req, res) => {
 
     res.json({ recordings, presenters, resources });
   } catch {
-    // KV not configured — fall back to defaults
     const recordings = defaults.recordings
       .filter((r) => r.status === "published")
       .map(toPublicRec);

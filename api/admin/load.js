@@ -13,6 +13,12 @@ module.exports = async (req, res) => {
       kv.get("apex:presenters"),
       kv.get("apex:resources"),
     ]);
+
+    // Auto-seed on first access
+    if (kvRecs === null) kv.set("apex:recordings", defaults.recordings).catch(() => {});
+    if (kvPres === null) kv.set("apex:presenters", defaults.presenters).catch(() => {});
+    if (kvRes === null) kv.set("apex:resources", defaults.resources).catch(() => {});
+
     res.json({
       ok: true,
       recordings: kvRecs || defaults.recordings,
