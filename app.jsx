@@ -23,6 +23,86 @@ const APEX_DEFAULTS = /*EDITMODE-BEGIN*/{
   "showCounts": true
 }/*EDITMODE-END*/;
 
+// ── Transcript persistence ────────────────────────────────────────────────────
+// Each recording's transcript state is keyed by rec.id in localStorage.
+// Entry shape: { status: 'submitting'|'queued'|'processing'|'completed'|'error',
+//                jobId?, summary?, utterances?, keywords?, text?, error? }
+const TS_KEY = "apex_ts_v1";
+
+function tsLoad() {
+  try { return JSON.parse(localStorage.getItem(TS_KEY) || "{}"); } catch { return {}; }
+}
+function tsSave(s) {
+  try { localStorage.setItem(TS_KEY, JSON.stringify(s)); } catch {}
+}
+function tsSet(recId, data) {
+  const s = tsLoad(); s[recId] = data; tsSave(s);
+  window.dispatchEvent(new CustomEvent("apex_ts", { detail: { recId, data } }));
+}
+function tsGet(recId) { return tsLoad()[recId] || null; }
+
+// Subscribe to transcript updates for one recording ID.
+function useTranscriptEntry(recId) {
+  const [entry, setEntry] = useState(() => tsGet(recId));
+  useEffect(() => {
+    setEntry(tsGet(recId));
+    const h = (e) => { if (e.detail.recId === recId) setEntry(e.detail.data); };
+    window.addEventListener("apex_ts", h);
+    return () => window.removeEventListener("apex_ts", h);
+  }, [recId]);
+  return entry;
+}
+
+// Runs in App once after auth: submits all recordings that don't have a transcript yet,
+// then polls every 15s until all in-progress jobs are complete.
+function useAutoTranscribe(authed) {
+  useEffect(() => {
+    if (!authed) return;
+    const recs = (window.APEX_RECORDINGS || []).filter((r) => r.video);
+    const store = tsLoad();
+    recs.forEach(async (rec) => {
+      const ex = store[rec.id];
+      if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) return;
+      if (ex?.status === "error") return; // user can retry manually
+      try {
+        tsSet(rec.id, { status: "submitting" });
+        const res = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: rec.video }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { id } = await res.json();
+        tsSet(rec.id, { status: "queued", jobId: id });
+      } catch (e) {
+        tsSet(rec.id, { status: "error", error: e.message });
+      }
+    });
+  }, [authed]);
+
+  useEffect(() => {
+    if (!authed) return;
+    const poll = async () => {
+      const store = tsLoad();
+      const pending = Object.entries(store).filter(
+        ([, v]) => ["queued", "processing"].includes(v?.status) && v?.jobId
+      );
+      for (const [recId, entry] of pending) {
+        try {
+          const res = await fetch(`/api/transcribe-status?id=${entry.jobId}`);
+          const data = await res.json();
+          if (data.status && data.status !== entry.status) tsSet(recId, { ...entry, ...data });
+        } catch {}
+      }
+    };
+    poll();
+    const id = setInterval(poll, 15000);
+    return () => clearInterval(id);
+  }, [authed]);
+}
+
+// ── Shared components ─────────────────────────────────────────────────────────
+
 function Badge({ type, size }) {
   const m = TYPE_META[type];
   return (
@@ -107,6 +187,8 @@ function QuickLinks({ links }) {
   );
 }
 
+// ── Gate ──────────────────────────────────────────────────────────────────────
+
 const APEX_PASSWORD = "Sales";
 
 function Gate({ onUnlock }) {
@@ -148,6 +230,8 @@ function Gate({ onUnlock }) {
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function durToSec(d) {
   if (!d) return 0;
   const p = d.split(":").map(Number);
@@ -159,6 +243,10 @@ function fmt(s) {
   return m + ":" + String(ss).padStart(2, "0");
 }
 function fmtMs(ms) { return fmt(Math.floor(ms / 1000)); }
+
+const SPEAKER_COLORS = { A: "#C9A84C", B: "#4C7DF0", C: "#46A758", D: "#E5484D", E: "#AB7DF0", F: "#0BC5C5" };
+
+// ── Recordings ────────────────────────────────────────────────────────────────
 
 function PresenterSelector({ presenters, selected, onSelect }) {
   return (
@@ -178,6 +266,15 @@ function PresenterSelector({ presenters, selected, onSelect }) {
   );
 }
 
+// Small status badge shown on each recording row in the Recordings page.
+function TsStatusDot({ recId }) {
+  const entry = useTranscriptEntry(recId);
+  if (!entry || entry.status === "error") return null;
+  if (entry.status === "completed")
+    return <span className="ts-dot ts-dot-done">✓ Transcript</span>;
+  return <span className="ts-dot ts-dot-spin">● Transcribing…</span>;
+}
+
 function RecordingRow({ rec, onOpen }) {
   return (
     <button className="rec-card" onClick={() => onOpen(rec)}>
@@ -190,12 +287,16 @@ function RecordingRow({ rec, onOpen }) {
           <span>{rec.date}</span>
           {rec.video && <span className="rec-dot">·</span>}
           {rec.video && <span className="rec-video-tag">{rec.audio ? "♪ Audio" : "▶ Video"}</span>}
+          {rec.video && <span className="rec-dot">·</span>}
+          {rec.video && <TsStatusDot recId={rec.id} />}
         </span>
       </span>
       <span className="rec-dur">{rec.duration || (rec.audio ? "Audio" : rec.video ? "Video" : "")}</span>
     </button>
   );
 }
+
+// ── Media player ──────────────────────────────────────────────────────────────
 
 const TRANSCRIPT_POOL = [
   "The first thing I want you to understand is that this is a skill — it's learnable.",
@@ -223,9 +324,10 @@ function makeTranscript(rec, total) {
   return lines.map((text, i) => ({ t: Math.round((i / n) * total), text }));
 }
 
-function MediaPlayer({ rec }) {
+// tsEntry: the cached transcript entry from useTranscriptEntry (may be null / pending / completed).
+function MediaPlayer({ rec, tsEntry }) {
   const total = durToSec(rec.duration);
-  const transcript = useMemo(() => makeTranscript(rec, total), [rec.id, total]);
+  const simTranscript = useMemo(() => makeTranscript(rec, total), [rec.id, total]);
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
   const tickRef = useRef(null);
@@ -241,7 +343,7 @@ function MediaPlayer({ rec }) {
   }, [playing, total]);
 
   let activeIdx = 0;
-  for (let i = 0; i < transcript.length; i++) { if (transcript[i].t <= cur) activeIdx = i; else break; }
+  for (let i = 0; i < simTranscript.length; i++) { if (simTranscript[i].t <= cur) activeIdx = i; else break; }
 
   useEffect(() => {
     const c = scrollRef.current; if (!c) return;
@@ -260,6 +362,17 @@ function MediaPlayer({ rec }) {
   };
 
   const hasVideo = !!rec.video;
+  const realTs = tsEntry?.status === "completed" ? tsEntry : null;
+
+  const tsSubLabel = () => {
+    if (!hasVideo) return "Auto-generated · click a line to jump";
+    if (realTs) return `${realTs.utterances?.length || 0} segments · speaker-labeled`;
+    if (!tsEntry || tsEntry.status === "submitting") return "Starting transcription…";
+    if (tsEntry.status === "queued") return "Queued — ready in a few minutes…";
+    if (tsEntry.status === "processing") return "Transcribing now…";
+    if (tsEntry.status === "error") return "Transcription error — retry in the Transcriber";
+    return "Pending";
+  };
 
   return (
     <div className="mp">
@@ -290,15 +403,39 @@ function MediaPlayer({ rec }) {
       <div className="ts">
         <div className="ts-head">
           <span className="ts-title">Transcript</span>
-          <span className="ts-auto">{hasVideo ? "Pending — needs transcription" : "Auto-generated · click a line to jump"}</span>
+          <span className="ts-auto">{tsSubLabel()}</span>
         </div>
         {hasVideo ? (
-          <div className="ts-body ts-pending">
-            <p className="ts-pending-text">No transcript yet for this recording. Connect a speech-to-text service — or upload a transcript file — to enable searchable, click-to-jump captions here.</p>
-          </div>
+          realTs ? (
+            <div className="ts-body" ref={scrollRef}>
+              {realTs.utterances?.length > 0 ? (
+                realTs.utterances.map((u, i) => (
+                  <div key={i} className="ts-line" style={{ cursor: "default" }}>
+                    <span className="ts-time">{fmtMs(u.startMs)}</span>
+                    {u.speaker && (
+                      <span style={{
+                        color: SPEAKER_COLORS[u.speaker] || "var(--gold)",
+                        fontWeight: 700, fontSize: 10.5, textTransform: "uppercase",
+                        letterSpacing: "0.08em", paddingTop: 2, flexShrink: 0, minWidth: 18,
+                      }}>{u.speaker}</span>
+                    )}
+                    <span className="ts-text">{u.text}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="ts-line" style={{ cursor: "default" }}>
+                  <span className="ts-text">{realTs.text}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="ts-body ts-pending">
+              <p className="ts-pending-text">{tsSubLabel()}</p>
+            </div>
+          )
         ) : (
           <div className="ts-body" ref={scrollRef}>
-            {transcript.map((seg, i) => (
+            {simTranscript.map((seg, i) => (
               <button key={i} className={"ts-line" + (i === activeIdx ? " ts-line-on" : "")} onClick={() => setCur(seg.t)}>
                 <span className="ts-time">{fmt(seg.t)}</span>
                 <span className="ts-text">{seg.text}</span>
@@ -312,6 +449,7 @@ function MediaPlayer({ rec }) {
 }
 
 function PlayerModal({ rec, presenter, onClose }) {
+  const tsEntry = useTranscriptEntry(rec?.id || "");
   useEffect(() => {
     if (!rec) return;
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -333,7 +471,7 @@ function PlayerModal({ rec, presenter, onClose }) {
           <span className="rec-topic pm-topic">{rec.topic}</span>
         </div>
         <h2 className="modal-title">{rec.title}</h2>
-        <MediaPlayer rec={rec} />
+        <MediaPlayer rec={rec} tsEntry={tsEntry} />
       </div>
     </div>
   );
@@ -377,7 +515,7 @@ function RecordedPresentations() {
   );
 }
 
-const SPEAKER_COLORS = { A: "#C9A84C", B: "#4C7DF0", C: "#46A758", D: "#E5484D", E: "#AB7DF0", F: "#0BC5C5" };
+// ── Transcriber ───────────────────────────────────────────────────────────────
 
 function DropZone({ file, onFile }) {
   const [over, setOver] = useState(false);
@@ -409,22 +547,154 @@ function DropZone({ file, onFile }) {
   );
 }
 
+// Reusable transcript output — used in both the recording cards and the manual transcription flow.
+function TranscriptResult({ result, title }) {
+  const [copied, setCopied] = useState(false);
+
+  function copyAll() {
+    const lines = result.utterances?.length
+      ? result.utterances.map((u) => `[${fmtMs(u.startMs)}]${u.speaker ? ` Speaker ${u.speaker}:` : ""} ${u.text}`)
+      : [result.text || ""];
+    navigator.clipboard.writeText(lines.join("\n")).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  function downloadTxt() {
+    let out = title ? `${title}\n${"─".repeat(60)}\n\n` : "";
+    if (result.summary) out += `SUMMARY\n${result.summary}\n\n`;
+    if (result.keywords?.length) out += `KEY TERMS\n${result.keywords.map((k) => `${k.text} (${k.count}x)`).join("  ·  ")}\n\n`;
+    out += `TRANSCRIPT\n${"─".repeat(60)}\n`;
+    if (result.utterances?.length) {
+      result.utterances.forEach((u) => { out += `[${fmtMs(u.startMs)}]${u.speaker ? ` Speaker ${u.speaker}:` : ""} ${u.text}\n`; });
+    } else { out += result.text || ""; }
+    const slug = (title || "transcript").replace(/[^a-z0-9]/gi, "-").toLowerCase();
+    const a = Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(new Blob([out], { type: "text/plain" })),
+      download: `${slug}.txt`,
+    });
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
+  return (
+    <div>
+      {result.summary && (
+        <div className="tr-summary">
+          <span className="tr-summary-label">AI Summary</span>
+          <p className="tr-summary-text">{result.summary}</p>
+        </div>
+      )}
+      {result.keywords?.length > 0 && (
+        <div className="tr-keywords">
+          {result.keywords.slice(0, 16).map((k, i) => (
+            <span key={i} className="tr-kw">{k.text}<span className="tr-kw-count">×{k.count}</span></span>
+          ))}
+        </div>
+      )}
+      <div className="tr-transcript-box">
+        <div className="tr-transcript-head">
+          <span className="tr-transcript-label">Transcript</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="tr-action-btn" onClick={copyAll}>{copied ? "✓ Copied" : "⎘ Copy"}</button>
+            <button className="tr-action-btn" onClick={downloadTxt}>↓ .txt</button>
+          </div>
+        </div>
+        <div className="tr-transcript-body">
+          {result.utterances?.length > 0 ? (
+            result.utterances.map((u, i) => (
+              <div key={i} className="tr-utterance">
+                <div className="tr-utt-left">
+                  <span className="tr-utt-ts">{fmtMs(u.startMs)}</span>
+                  {u.speaker && <span className="tr-speaker" style={{ "--sc": SPEAKER_COLORS[u.speaker] || "var(--gold)" }}>{u.speaker}</span>}
+                </div>
+                <span className="tr-utt-text">{u.text}</span>
+              </div>
+            ))
+          ) : (
+            <pre className="tr-plain">{result.text}</pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Card for a single recording in the Transcriber page — shows status and expandable transcript.
+function RecordingTranscriptCard({ rec }) {
+  const presenter = (window.APEX_PRESENTERS || []).find((p) => p.id === rec.presenter);
+  const tsEntry = useTranscriptEntry(rec.id);
+  const [expanded, setExpanded] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+
+  const status = tsEntry?.status;
+
+  async function retry() {
+    setRetrying(true);
+    try {
+      tsSet(rec.id, { status: "submitting" });
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: rec.video }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const { id } = await res.json();
+      tsSet(rec.id, { status: "queued", jobId: id });
+    } catch (e) {
+      tsSet(rec.id, { status: "error", error: e.message });
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <div className={"tr-rec-card" + (expanded ? " tr-rec-card-open" : "")}>
+      <div className="tr-rec-row">
+        <div className="tr-rec-meta">
+          <span className="tr-rec-title">{rec.title}</span>
+          <span className="tr-rec-by">{presenter?.name}{rec.date ? ` · ${rec.date}` : ""}</span>
+        </div>
+        <div className="tr-rec-right">
+          {(!status || status === "submitting") && <span className="ts-dot ts-dot-spin">● Submitting…</span>}
+          {status === "queued" && <span className="ts-dot ts-dot-spin">● Queued…</span>}
+          {status === "processing" && <span className="ts-dot ts-dot-spin">● Transcribing…</span>}
+          {status === "error" && (
+            <>
+              <span className="ts-dot ts-dot-err" title={tsEntry.error}>Error</span>
+              <button className="tr-action-btn" onClick={retry} disabled={retrying}>{retrying ? "…" : "↻ Retry"}</button>
+            </>
+          )}
+          {status === "completed" && (
+            <button className="tr-action-btn" style={expanded ? { borderColor: "var(--gold)", color: "var(--gold)" } : {}}
+              onClick={() => setExpanded((e) => !e)}>
+              {expanded ? "▲ Collapse" : "✓ View Transcript"}
+            </button>
+          )}
+        </div>
+      </div>
+      {expanded && status === "completed" && (
+        <div className="tr-rec-body">
+          <TranscriptResult result={tsEntry} title={rec.title} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TranscriberView() {
   const [tab, setTab] = useState("url");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState(null);
-  const [phase, setPhase] = useState("idle"); // idle | loading | done | error
+  const [phase, setPhase] = useState("idle");
   const [statusMsg, setStatusMsg] = useState("");
-  const [result, setResult] = useState(null);
+  const [manualResult, setManualResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const [copied, setCopied] = useState(false);
   const pollRef = useRef(null);
 
   useEffect(() => () => clearInterval(pollRef.current), []);
 
+  const recordings = window.APEX_RECORDINGS || [];
   const canSubmit = tab === "url" ? url.trim().length > 0 : !!file;
 
-  async function submit() {
+  async function submitManual() {
     setPhase("loading");
     setStatusMsg("Starting transcription…");
     setErrorMsg("");
@@ -453,13 +723,13 @@ function TranscriberView() {
           const data = await sr.json();
           if (data.status === "completed") {
             clearInterval(pollRef.current);
-            setResult(data);
+            setManualResult(data);
             setPhase("done");
           } else if (data.status === "error") {
             clearInterval(pollRef.current);
             throw new Error(data.error || "Transcription failed");
           } else {
-            setStatusMsg(data.status === "queued" ? "Queued — waiting for a processing slot…" : "Transcribing audio…");
+            setStatusMsg(data.status === "queued" ? "Queued — waiting for a slot…" : "Transcribing audio…");
           }
         } catch (e) {
           clearInterval(pollRef.current);
@@ -473,41 +743,37 @@ function TranscriberView() {
     }
   }
 
-  function reset() {
+  function resetManual() {
     clearInterval(pollRef.current);
-    setPhase("idle"); setUrl(""); setFile(null); setResult(null); setErrorMsg(""); setCopied(false);
-  }
-
-  function copyAll() {
-    const lines = result?.utterances?.length
-      ? result.utterances.map((u) => `[${fmtMs(u.startMs)}]${u.speaker ? ` Speaker ${u.speaker}:` : ""} ${u.text}`)
-      : [result?.text || ""];
-    navigator.clipboard.writeText(lines.join("\n")).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
-  }
-
-  function downloadTxt() {
-    if (!result) return;
-    let out = "";
-    if (result.summary) out += `SUMMARY\n${"─".repeat(60)}\n${result.summary}\n\n`;
-    if (result.keywords?.length) out += `KEY TERMS\n${"─".repeat(60)}\n${result.keywords.map((k) => `${k.text} (${k.count}x)`).join("  ·  ")}\n\n`;
-    out += `TRANSCRIPT\n${"─".repeat(60)}\n`;
-    if (result.utterances?.length) {
-      result.utterances.forEach((u) => { out += `[${fmtMs(u.startMs)}]${u.speaker ? ` Speaker ${u.speaker}:` : ""} ${u.text}\n`; });
-    } else { out += result.text || ""; }
-    const a = Object.assign(document.createElement("a"), {
-      href: URL.createObjectURL(new Blob([out], { type: "text/plain" })),
-      download: "transcript.txt",
-    });
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    setPhase("idle"); setUrl(""); setFile(null); setManualResult(null); setErrorMsg("");
   }
 
   return (
     <main className="container">
       <section className="hero">
         <p className="hero-kicker">Transcriber</p>
-        <h1 className="hero-title">Instant transcripts.</h1>
-        <p className="hero-sub">Paste a Google Drive link or upload an audio/video file — get a timestamped transcript with speaker labels and an AI summary in minutes.</p>
+        <h1 className="hero-title">Transcripts, auto-generated.</h1>
+        <p className="hero-sub">Every recording in the hub is automatically transcribed when you log in — speaker-labeled, timestamped, with an AI summary. Add a new recording to the data file and it queues immediately on next load.</p>
       </section>
+
+      {recordings.length > 0 && (
+        <div style={{ marginBottom: 56 }}>
+          <div className="ql-head" style={{ marginBottom: 18 }}>
+            <span className="ql-rule" />
+            <span className="ql-label">Recorded Trainings</span>
+            <span className="ql-rule" />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {recordings.map((rec) => <RecordingTranscriptCard key={rec.id} rec={rec} />)}
+          </div>
+        </div>
+      )}
+
+      <div className="ql-head" style={{ marginBottom: 18 }}>
+        <span className="ql-rule" />
+        <span className="ql-label">Transcribe Something New</span>
+        <span className="ql-rule" />
+      </div>
 
       {phase === "idle" && (
         <div className="tr-input-card">
@@ -520,13 +786,13 @@ function TranscriberView() {
               <input className="tr-url-field" type="url"
                 placeholder="Paste a Google Drive or Vimeo link…"
                 value={url} onChange={(e) => setUrl(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && canSubmit && submit()} />
-              <p className="tr-url-hint">Google Drive: make sure sharing is set to "Anyone with the link → Viewer"</p>
+                onKeyDown={(e) => e.key === "Enter" && canSubmit && submitManual()} />
+              <p className="tr-url-hint">Google Drive: sharing must be set to "Anyone with the link → Viewer"</p>
             </>
           ) : (
             <DropZone file={file} onFile={setFile} />
           )}
-          <button className="tr-submit" disabled={!canSubmit} onClick={submit}>
+          <button className="tr-submit" disabled={!canSubmit} onClick={submitManual}>
             Transcribe <span className="cta-arrow">→</span>
           </button>
         </div>
@@ -537,70 +803,24 @@ function TranscriberView() {
           <div className="tr-spinner" />
           <p className="tr-proc-label">Transcribing</p>
           <p className="tr-proc-sub">{statusMsg}</p>
-          <p className="tr-proc-sub" style={{ color: "var(--muted-2)", marginTop: 2 }}>
-            Usually takes 1–3 minutes. Keep this tab open.
-          </p>
+          <p className="tr-proc-sub" style={{ color: "var(--muted-2)", marginTop: 2 }}>Usually 1–3 minutes. Keep this tab open.</p>
         </div>
       )}
 
       {phase === "error" && (
         <div className="tr-processing">
-          <p className="tr-proc-label" style={{ color: "#E5484D" }}>Transcription Failed</p>
+          <p className="tr-proc-label" style={{ color: "#E5484D" }}>Failed</p>
           <p className="tr-proc-sub">{errorMsg}</p>
-          <button className="tr-submit" style={{ marginTop: 20 }} onClick={reset}>Try Again</button>
+          <button className="tr-submit" style={{ marginTop: 20 }} onClick={resetManual}>Try Again</button>
         </div>
       )}
 
-      {phase === "done" && result && (
+      {phase === "done" && manualResult && (
         <div className="tr-result">
-          <div className="tr-actions">
-            <button className="tr-action-btn" onClick={copyAll}>{copied ? "✓ Copied!" : "⎘ Copy Text"}</button>
-            <button className="tr-action-btn" onClick={downloadTxt}>↓ Download .txt</button>
-            <button className="tr-action-btn tr-action-new" onClick={reset}>+ New Transcript</button>
+          <div className="tr-actions" style={{ marginBottom: 20 }}>
+            <button className="tr-action-btn tr-action-new" onClick={resetManual}>+ New Transcript</button>
           </div>
-
-          {result.summary && (
-            <div className="tr-summary">
-              <span className="tr-summary-label">AI Summary</span>
-              <p className="tr-summary-text">{result.summary}</p>
-            </div>
-          )}
-
-          {result.keywords?.length > 0 && (
-            <div className="tr-keywords">
-              {result.keywords.slice(0, 16).map((k, i) => (
-                <span key={i} className="tr-kw">{k.text}<span className="tr-kw-count">×{k.count}</span></span>
-              ))}
-            </div>
-          )}
-
-          <div className="tr-transcript-box">
-            <div className="tr-transcript-head">
-              <span className="tr-transcript-label">Transcript</span>
-              {result.utterances?.length > 0 && (
-                <span className="tr-transcript-count">{result.utterances.length} segments</span>
-              )}
-            </div>
-            <div className="tr-transcript-body">
-              {result.utterances?.length > 0 ? (
-                result.utterances.map((u, i) => (
-                  <div key={i} className="tr-utterance">
-                    <div className="tr-utt-left">
-                      <span className="tr-utt-ts">{fmtMs(u.startMs)}</span>
-                      {u.speaker && (
-                        <span className="tr-speaker" style={{ "--sc": SPEAKER_COLORS[u.speaker] || "var(--gold)" }}>
-                          {u.speaker}
-                        </span>
-                      )}
-                    </div>
-                    <span className="tr-utt-text">{u.text}</span>
-                  </div>
-                ))
-              ) : (
-                <pre className="tr-plain">{result.text}</pre>
-              )}
-            </div>
-          </div>
+          <TranscriptResult result={manualResult} title={url || file?.name || "transcript"} />
         </div>
       )}
 
@@ -608,6 +828,8 @@ function TranscriberView() {
     </main>
   );
 }
+
+// ── Page chrome ───────────────────────────────────────────────────────────────
 
 function Footer() {
   return (
@@ -654,7 +876,7 @@ const HUB = [
     route: "transcriber",
     num: "03",
     label: "Transcriber",
-    desc: "Paste a Google Drive link or upload a file — get a timestamped transcript with speaker labels and an AI summary.",
+    desc: "Every recording is auto-transcribed on login — speaker-labeled, timestamped, with an AI summary. Add new recordings and they queue instantly.",
   },
 ];
 
@@ -662,7 +884,7 @@ function HomeView() {
   const meta = {
     presentations: window.APEX_PRESENTERS.length + " presenters · " + window.APEX_RECORDINGS.length + " recordings",
     library: window.APEX_RESOURCES.length + " resources",
-    transcriber: "Google Drive · File upload",
+    transcriber: window.APEX_RECORDINGS.length + " recordings auto-queued",
   };
   return (
     <main className="container">
@@ -782,6 +1004,9 @@ function App() {
   });
   const [t, setTweak] = useTweaks(APEX_DEFAULTS);
   const route = useRoute();
+
+  useAutoTranscribe(authed);
+
   const rootStyle = { "--gold": t.accent };
 
   if (!authed) {

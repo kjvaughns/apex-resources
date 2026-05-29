@@ -633,6 +633,48 @@
   .tr-utt-text { font-size: 15px; line-height: 1.6; color: var(--text); flex: 1; }
   .tr-plain { font-size: 14px; line-height: 1.8; color: var(--muted); padding: 20px; white-space: pre-wrap; margin: 0; }
 
+  /* ---------- TRANSCRIPT STATUS DOT ---------- */
+  .ts-dot {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    font-size: 9px;
+  }
+  .ts-dot-done {
+    background: color-mix(in srgb, #3dd68c 14%, transparent);
+    color: #3dd68c; border: 1px solid color-mix(in srgb, #3dd68c 35%, transparent);
+  }
+  .ts-dot-err {
+    background: color-mix(in srgb, #E5484D 14%, transparent);
+    color: #E5484D; border: 1px solid color-mix(in srgb, #E5484D 35%, transparent);
+  }
+  .ts-dot-spin {
+    border: 2px solid rgba(201,168,76,0.2); border-top-color: var(--gold);
+    background: transparent; animation: tr-spin 0.9s linear infinite;
+  }
+
+  /* ---------- TRANSCRIBER RECORDING CARDS ---------- */
+  .tr-rec-row {
+    display: flex; align-items: center; gap: 14px; text-align: left; width: 100%;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; color: var(--text);
+    transition: border-color .16s, background .16s;
+    cursor: pointer;
+  }
+  .tr-rec-row:hover { border-color: rgba(255,255,255,0.18); background: var(--surface-2); }
+  .tr-rec-row-open { border-color: var(--gold); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .tr-rec-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .tr-rec-title { font-size: 15px; font-weight: 600; line-height: 1.25; }
+  .tr-rec-by { font-size: 12px; color: var(--muted-2); }
+  .tr-rec-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+  .tr-rec-card { margin-bottom: 10px; }
+  .tr-rec-card-open .tr-rec-row { border-color: var(--gold); }
+  .tr-rec-body {
+    border: 1px solid var(--gold); border-top: 0;
+    border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+    padding: 20px 22px; background: color-mix(in srgb, var(--gold) 4%, var(--surface));
+  }
+
   /* ---------- RESPONSIVE ---------- */
   @media (max-width: 760px) {
     .nav-inner { padding: 0 16px; height: 62px; gap: 12px; }
