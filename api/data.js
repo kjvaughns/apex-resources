@@ -1,4 +1,5 @@
-const { kv } = require("@vercel/kv");
+const { Redis } = require("@upstash/redis");
+const kv = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
 const defaults = require("./_defaults");
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
