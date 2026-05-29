@@ -2,8 +2,6 @@
 const { useState, useMemo, useEffect, useRef, useCallback } = React;
 const I = window.Icons;
 
-const ADMIN_PASSWORD = "ApexAdmin";
-
 const TYPE_META = {
   video:    { label: "Video",    color: "#E5484D", icon: "video",    plural: "Videos" },
   pdf:      { label: "PDF",      color: "#4C7DF0", icon: "pdf",      plural: "PDFs" },
@@ -56,14 +54,28 @@ const TypeIcon = ({ type }) => { const C = I[TYPE_META[type].icon]; return <C />
 function Gate({ onUnlock }) {
   const [val, setVal] = useState("");
   const [err, setErr] = useState(false);
+  const [loading, setLoading] = useState(false);
   const ref = useRef(null);
   useEffect(() => { ref.current && ref.current.focus(); }, []);
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    if (val === ADMIN_PASSWORD) {
-      try { sessionStorage.setItem("apex_admin_auth", "1"); } catch (e) {}
-      onUnlock();
-    } else { setErr(true); setVal(""); }
+    setLoading(true);
+    try {
+      const r = await fetch("/api/admin/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: val }),
+      });
+      const { ok } = await r.json();
+      if (ok) {
+        try {
+          sessionStorage.setItem("apex_admin_auth", "1");
+          sessionStorage.setItem("apex_admin_pw", val);
+        } catch (e) {}
+        onUnlock();
+      } else { setErr(true); setVal(""); }
+    } catch (e) { setErr(true); setVal(""); }
+    setLoading(false);
   };
   return (
     <div className="gate">
@@ -78,7 +90,9 @@ function Gate({ onUnlock }) {
             onChange={(e) => { setVal(e.target.value); setErr(false); }} />
         </div>
         {err && <p className="gate-err">Incorrect password.</p>}
-        <button type="submit" className="gate-btn">Sign in<span className="arr">→</span></button>
+        <button type="submit" className="gate-btn" disabled={loading}>
+          {loading ? "Signing in…" : "Sign in"}<span className="arr">→</span>
+        </button>
         <p className="gate-foot">Confidential — APEX internal administrators only.</p>
       </form>
     </div>
@@ -581,6 +595,36 @@ function App() {
   const [toDelete, setToDelete] = useState(null);
   const [toasts, setToasts] = useState([]);
 
+  const pw = () => { try { return sessionStorage.getItem("apex_admin_pw") || ""; } catch (e) { return ""; } };
+
+  const apiSave = useCallback(async (key, data) => {
+    try {
+      await fetch("/api/admin/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: pw(), key, data }),
+      });
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    if (!authed) return;
+    fetch("/api/admin/load", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw() }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok) {
+          setRecordings(d.recordings);
+          setPresenters(d.presenters);
+          setResources(d.resources);
+        }
+      })
+      .catch(() => {});
+  }, [authed]);
+
   const toast = useCallback((msg) => {
     const id = Date.now() + Math.random();
     setToasts((p) => [...p, { id, msg }]);
@@ -597,32 +641,49 @@ function App() {
   const openRec = (item) => { setEditing(item); setRoute("recording-form"); window.scrollTo(0, 0); };
 
   const save = (data, wasEditing) => {
-    setResources((prev) => wasEditing ? prev.map((r) => r.id === data.id ? data : r) : [data, ...prev]);
+    const updated = wasEditing ? resources.map((r) => r.id === data.id ? data : r) : [data, ...resources];
+    setResources(updated);
+    apiSave("apex:resources", updated);
     toast(wasEditing ? "Changes saved" : (data.status === "draft" ? "Saved as draft" : "Resource published"));
     setRoute("manage"); setEditing(null); setPresetType(null); window.scrollTo(0, 0);
   };
   const saveRec = (data, wasEditing) => {
-    setRecordings((prev) => wasEditing ? prev.map((r) => r.id === data.id ? data : r) : [data, ...prev]);
+    const updated = wasEditing ? recordings.map((r) => r.id === data.id ? data : r) : [data, ...recordings];
+    setRecordings(updated);
+    apiSave("apex:recordings", updated);
     toast(wasEditing ? "Recording saved" : (data.status === "draft" ? "Saved as draft" : "Recording published"));
     setRoute("recordings"); setEditing(null); window.scrollTo(0, 0);
   };
   const addPresenter = ({ name, role }) => {
     const np = { id: "p-" + Date.now().toString(36), name, role: role || "Presenter", initials: recInitialsOf(name) };
-    setPresenters((prev) => [...prev, np]);
+    const updated = [...presenters, np];
+    setPresenters(updated);
+    apiSave("apex:presenters", updated);
     return np;
   };
+  const updatePresenters = useCallback((updated) => {
+    setPresenters(updated);
+    apiSave("apex:presenters", updated);
+  }, [apiSave]);
   const doDelete = () => {
     if (!toDelete) return;
     if (toDelete.kind === "recording") {
-      setRecordings((prev) => prev.filter((r) => r.id !== toDelete.item.id));
+      const updated = recordings.filter((r) => r.id !== toDelete.item.id);
+      setRecordings(updated);
+      apiSave("apex:recordings", updated);
       toast("Recording deleted");
     } else {
-      setResources((prev) => prev.filter((r) => r.id !== toDelete.item.id));
+      const updated = resources.filter((r) => r.id !== toDelete.item.id);
+      setResources(updated);
+      apiSave("apex:resources", updated);
       toast("Resource deleted");
     }
     setToDelete(null);
   };
-  const logout = () => { try { sessionStorage.removeItem("apex_admin_auth"); } catch (e) {} setAuthed(false); };
+  const logout = () => {
+    try { sessionStorage.removeItem("apex_admin_auth"); sessionStorage.removeItem("apex_admin_pw"); } catch (e) {}
+    setAuthed(false);
+  };
 
   const rootStyle = { "--gold": t.accent };
 
@@ -663,7 +724,7 @@ function App() {
         )}
         {route === "recordings" && (
           <RecordingsView recordings={recordings} setRecordings={setRecordings}
-            presenters={presenters} setPresenters={setPresenters}
+            presenters={presenters} setPresenters={updatePresenters}
             onEdit={openRec} onAdd={openRec} onDelete={(r) => setToDelete({ item: r, kind: "recording" })} />
         )}
         {route === "recording-form" && (

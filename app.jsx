@@ -675,8 +675,22 @@ function App() {
   });
   const [t, setTweak] = useTweaks(APEX_DEFAULTS);
   const route = useRoute();
+  const [, setApiRev] = useState(0);
 
   useAutoTranscribe(authed);
+
+  useEffect(() => {
+    if (!authed) return;
+    fetch("/api/data")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.recordings) window.APEX_RECORDINGS = d.recordings;
+        if (d.presenters) window.APEX_PRESENTERS = d.presenters;
+        if (d.resources) window.APEX_RESOURCES = d.resources;
+        setApiRev((n) => n + 1);
+      })
+      .catch(() => {});
+  }, [authed]);
 
   const rootStyle = { "--gold": t.accent };
 
