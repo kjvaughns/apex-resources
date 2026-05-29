@@ -597,14 +597,19 @@ function DeleteModal({ item, label = "resource", onConfirm, onClose }) {
 function QuickLinksView({ links, onSave }) {
   const [rows, setRows] = useState(() => links.map((l) => ({ ...l })));
   const [saved, setSaved] = useState(false);
+  const isSaving = useRef(false);
 
-  const linksKey = links.map((l) => l.id).join(",");
-  useEffect(() => { setRows(links.map((l) => ({ ...l }))); setSaved(false); }, [linksKey]);
+  const linksKey = links.map((l) => `${l.id}|${l.label}|${l.sub}|${l.href}`).join(",");
+  useEffect(() => {
+    if (isSaving.current) { isSaving.current = false; return; }
+    setRows(links.map((l) => ({ ...l })));
+    setSaved(false);
+  }, [linksKey]);
 
   const set = (id, key, val) => { setRows((p) => p.map((r) => r.id === id ? { ...r, [key]: val } : r)); setSaved(false); };
   const add = () => { setRows((p) => [...p, { id: "ql-" + Date.now().toString(36), label: "", sub: "", href: "" }]); setSaved(false); };
   const remove = (id) => { setRows((p) => p.filter((r) => r.id !== id)); setSaved(false); };
-  const save = () => { onSave(rows.filter((r) => r.label.trim())); setSaved(true); };
+  const save = () => { isSaving.current = true; onSave(rows.filter((r) => r.label.trim())); setSaved(true); };
 
   return (
     <div className="content">
