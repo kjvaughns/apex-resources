@@ -2,6 +2,12 @@
 const { useState: useStateR, useMemo: useMemoR, useEffect: useEffectR, useRef: useRefR } = React;
 const Ir = window.Icons;
 
+function toGDriveEmbed(src) {
+  if (!src) return src;
+  const m = src.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
+  return m ? "https://drive.google.com/file/d/" + m[1] + "/preview" : src;
+}
+
 const REC_FMT = {
   video: { label: "Video", color: "#E5484D", icon: "video" },
   audio: { label: "Audio", color: "#9A6BE0", icon: "audio" },
@@ -85,7 +91,7 @@ function RecordingForm({ editing, presenters, onAddPresenter, onSave, onCancel }
       id: editing ? editing.id : "rec-" + Date.now().toString(36),
       presenterId: f.presenterId, title: f.title.trim(), topic: f.topic.trim() || "General",
       date: f.date, format: f.format, duration: f.duration.trim(),
-      source: f.source.trim(), desc: f.desc.trim(), status,
+      source: toGDriveEmbed(f.source.trim()), desc: f.desc.trim(), status,
     }, !!editing);
   };
 
