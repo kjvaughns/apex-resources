@@ -72,10 +72,8 @@ module.exports = async function handler(req, res) {
 
     const job = await client.transcripts.submit({
       audio_url: audioUrl,
+      speech_models: ["universal-3-pro", "universal-2"],
       speaker_labels: true,
-      summarization: true,
-      summary_model: 'informative',
-      summary_type: 'paragraph',
       auto_highlights: true,
       punctuate: true,
       format_text: true,
