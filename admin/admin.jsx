@@ -695,12 +695,22 @@ function App() {
     }
   }, [toast]);
 
-  const setResourcesAndSave = useCallback((updater) => {
+  const setResourcesAndSave = useCallback(async (updater) => {
+    let next;
     setResources((prev) => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      apiSave("apex:resources", next);
+      next = typeof updater === "function" ? updater(prev) : updater;
       return next;
     });
+    await apiSave("apex:resources", next);
+  }, [apiSave]);
+
+  const setRecordingsAndSave = useCallback(async (updater) => {
+    let next;
+    setRecordings((prev) => {
+      next = typeof updater === "function" ? updater(prev) : updater;
+      return next;
+    });
+    await apiSave("apex:recordings", next);
   }, [apiSave]);
 
   const transcribeIfNeeded = useCallback(async (rec) => {
@@ -855,7 +865,7 @@ function App() {
             onEdit={openEdit} onDelete={(r) => setToDelete({ item: r, kind: "resource" })} presetFilter={presetFilter} density={t.density} />
         )}
         {route === "recordings" && (
-          <RecordingsView recordings={recordings} setRecordings={setRecordings}
+          <RecordingsView recordings={recordings} setRecordings={setRecordingsAndSave}
             presenters={presenters} setPresenters={updatePresenters}
             onEdit={openRec} onAdd={openRec} onDelete={(r) => setToDelete({ item: r, kind: "recording" })} />
         )}
