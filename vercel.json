@@ -15,6 +15,7 @@
   "functions": {
     "api/transcribe.js": { "maxDuration": 30 },
     "api/transcribe-status.js": { "maxDuration": 10 },
-    "api/upload.js": { "maxDuration": 30 }
+    "api/upload.js": { "maxDuration": 30 },
+    "api/file.js": { "maxDuration": 30 }
   }
 }
