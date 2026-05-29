@@ -60,6 +60,10 @@ window.APEX_PRESENTERS = [
 ];
 
 window.APEX_RECORDINGS = [
+  { id: "r-obi-1", presenter: "obi", title: "Obi Recording 1", topic: "Training", date: "May 29, 2026", audio: true, video: "https://drive.google.com/file/d/1mzo2RzPyZc1BwLu6-MJDT8VSQoDcRQ7w/preview", desc: "" },
+  { id: "r-obi-2", presenter: "obi", title: "Obi Recording 2", topic: "Training", date: "May 29, 2026", audio: true, video: "https://drive.google.com/file/d/1GTV9fIvOMmJKIq_4PsQxy6_IN8UVm-3O/preview", desc: "" },
+  { id: "r-obi-3", presenter: "obi", title: "Obi Recording 3", topic: "Training", date: "May 29, 2026", audio: true, video: "https://drive.google.com/file/d/1UfUKBFhBZIRryNAoJpVddvFapJZUwwhp/preview", desc: "" },
+  { id: "r-obi-4", presenter: "obi", title: "Obi Recording 4", topic: "Training", date: "May 29, 2026", audio: true, video: "https://drive.google.com/file/d/1v85PsodhALrGRf7BmBVv7AsA1FbD_4Od/preview", desc: "" },
   { id: "r-kj-1", presenter: "kj", title: "Beating the Price Objection — Version 1", topic: "Objections", date: "May 21, 2026", audio: true, video: "https://drive.google.com/file/d/1aNpO39ZqQ3veCp1m4Aya8pa0QQ4Ffzjj/preview", desc: "One version of KJ's price-objection pitch — how he reframes \"it costs too much\" around the value of the protection." },
   { id: "r-kj-2", presenter: "kj", title: "Beating the Price Objection — Version 2", topic: "Objections", date: "May 7, 2026", audio: true, video: "https://drive.google.com/file/d/1Pu3KtI7zg5Bp0uvvHnIhWq7675Kt0Ts6/preview", desc: "A different take on the same price-objection pitch — another way KJ holds the price and moves toward the close." },
   { id: "r-kj-3", presenter: "kj", title: "Selling More Coverage — Objection Handling", topic: "Objections", date: "Apr 12, 2026", audio: true, video: "https://drive.google.com/file/d/1F4QK3vqzTO0R30SKp92KRuDNKhRQf1qj/preview", desc: "Handling objections when positioning additional coverage so clients land on the right level of protection." },
