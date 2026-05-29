@@ -624,7 +624,9 @@ function Toasts({ items }) {
   return (
     <div className="toast-wrap">
       {items.map((t) => (
-        <div key={t.id} className="toast"><span className="toast-ico"><I.check /></span>{t.msg}</div>
+        <div key={t.id} className={"toast" + (t.err ? " toast-err" : "")}>
+          <span className="toast-ico">{t.err ? <I.trash /> : <I.check />}</span>{t.msg}
+        </div>
       ))}
     </div>
   );
@@ -668,15 +670,27 @@ function App() {
 
   const pw = () => { try { return sessionStorage.getItem("apex_admin_pw") || ""; } catch (e) { return ""; } };
 
+  const toast = useCallback((msg, err) => {
+    const id = Date.now() + Math.random();
+    setToasts((p) => [...p, { id, msg, err }]);
+    setTimeout(() => setToasts((p) => p.filter((x) => x.id !== id)), 3500);
+  }, []);
+
   const apiSave = useCallback(async (key, data) => {
     try {
-      await fetch("/api/admin/save", {
+      const r = await fetch("/api/admin/save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: pw(), key, data }),
       });
-    } catch (e) {}
-  }, []);
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        toast("Save failed: " + (j.error || "HTTP " + r.status), true);
+      }
+    } catch {
+      toast("Save failed — network error", true);
+    }
+  }, [toast]);
 
   const transcribeIfNeeded = useCallback(async (rec) => {
     if (!rec.source || rec.status !== "published") return;
@@ -701,28 +715,33 @@ function App() {
 
   useEffect(() => {
     if (!authed) return;
+    const p = pw();
+    if (!p) {
+      // Stale session — no password stored, must re-login
+      try { sessionStorage.removeItem("apex_admin_auth"); } catch (e) {}
+      setAuthed(false);
+      return;
+    }
     fetch("/api/admin/load", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: pw() }),
+      body: JSON.stringify({ password: p }),
     })
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.ok) {
-          setRecordings(d.recordings);
-          setPresenters(d.presenters);
-          setResources(d.resources);
-          if (d.quickLinks) setQuickLinks(d.quickLinks);
+      .then(async (r) => {
+        const d = await r.json();
+        if (!d.ok) {
+          // Auth failed — clear session and force re-login
+          try { sessionStorage.removeItem("apex_admin_auth"); sessionStorage.removeItem("apex_admin_pw"); } catch (e) {}
+          setAuthed(false);
+          return;
         }
+        setRecordings(d.recordings);
+        setPresenters(d.presenters);
+        setResources(d.resources);
+        if (d.quickLinks) setQuickLinks(d.quickLinks);
       })
-      .catch(() => {});
+      .catch(() => toast("Failed to load data — check DB config", true));
   }, [authed]);
-
-  const toast = useCallback((msg) => {
-    const id = Date.now() + Math.random();
-    setToasts((p) => [...p, { id, msg }]);
-    setTimeout(() => setToasts((p) => p.filter((x) => x.id !== id)), 2600);
-  }, []);
 
   const nav = (key, filter) => { setRoute(key); setPresetFilter(filter || null); window.scrollTo(0, 0); };
   const openAdd = (item, type) => {

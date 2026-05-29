@@ -1,13 +1,27 @@
 const { Redis } = require("@upstash/redis");
-const kv = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
 
 const ALLOWED = ["apex:recordings", "apex:presenters", "apex:resources", "apex:quicklinks"];
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).end();
+
   const { password, key, data } = req.body || {};
-  if (password !== process.env.ADMIN_PASSWORD) return res.status(401).json({ ok: false, error: "Unauthorized" });
-  if (!ALLOWED.includes(key)) return res.status(400).json({ ok: false, error: "Invalid key" });
-  await kv.set(key, data);
-  res.json({ ok: true });
+
+  if (!process.env.ADMIN_PASSWORD)
+    return res.status(500).json({ ok: false, error: "ADMIN_PASSWORD env var not set in Vercel" });
+  if (password !== process.env.ADMIN_PASSWORD)
+    return res.status(401).json({ ok: false, error: "Wrong password" });
+  if (!ALLOWED.includes(key))
+    return res.status(400).json({ ok: false, error: "Invalid key: " + key });
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN)
+    return res.status(500).json({ ok: false, error: "Upstash env vars not set in Vercel" });
+
+  try {
+    const kv = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
+    await kv.set(key, data);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[admin/save]", e.message);
+    res.status(500).json({ ok: false, error: "DB error: " + e.message });
+  }
 };
