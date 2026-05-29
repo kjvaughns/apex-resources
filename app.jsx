@@ -145,6 +145,7 @@ function Card({ item, onOpen }) {
     <button className="card" style={{ "--bc": m.color }} onClick={() => onOpen(item)}>
       <div className="card-top">
         <Badge type={item.type} size="sm" />
+        {item.isNew && <span className="new-badge">New</span>}
         <span className="card-date">{item.date}</span>
       </div>
       <h3 className="card-title">{item.title}</h3>

@@ -239,7 +239,7 @@ function Dashboard({ resources, recordings, presenters, onNav, onAdd, onAddRec, 
 
 // ── RESOURCE FORM ───────────────────────────────────────────────────────────────
 function blankForm(type) {
-  return { title: "", type: type || "video", desc: "", sourceMode: "link", link: "", fileName: "",
+  return { title: "", type: type || "pdf", desc: "", sourceMode: "link", link: "", fileName: "", fileObj: null,
     thumbMode: "url", thumb: "", thumbFile: "", tags: [], duration: "", featured: false, isNew: false,
     date: todayISO(), status: "published" };
 }
@@ -256,6 +256,8 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
   const [f, setF] = useState(() => editing ? fromItem(editing) : blankForm(presetType));
   const [tagDraft, setTagDraft] = useState("");
   const [err, setErr] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
   const addTag = (raw) => {
@@ -272,11 +274,32 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
   const fileRef = useRef(null);
   const thumbRef = useRef(null);
 
-  const submit = (status) => {
+  const submit = async (status) => {
     if (!f.title.trim()) { setErr(true); return; }
     addTag(tagDraft);
     const tags = tagDraft.trim() ? [...new Set([...f.tags, ...tagDraft.split(",").map((s) => s.trim()).filter(Boolean)])] : f.tags;
-    const link = f.sourceMode === "upload" ? (f.fileName ? "uploads/" + f.fileName : (editing?.link || "#")) : (f.link || "#");
+
+    let link;
+    if (f.sourceMode === "upload" && f.fileObj) {
+      setUploading(true);
+      setUploadErr("");
+      const fd = new FormData();
+      fd.append("file", f.fileObj, f.fileName);
+      try {
+        const r = await fetch("/api/upload", { method: "POST", body: fd });
+        const j = await r.json();
+        if (!j.ok) { setUploadErr("Upload failed: " + j.error); setUploading(false); return; }
+        link = j.url;
+      } catch {
+        setUploadErr("Upload failed — network error");
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    } else {
+      link = f.sourceMode === "upload" ? (editing?.link || "#") : (f.link || "#");
+    }
+
     onSave({
       id: editing ? editing.id : "r-" + Date.now().toString(36),
       type: f.type, title: f.title.trim(), desc: f.desc.trim(), date: f.date,
@@ -327,13 +350,26 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
                 <input className="field" placeholder="Vimeo / Google Drive / direct URL"
                   value={f.link} onChange={(e) => set("link", e.target.value)} />
               ) : (
-                <div className="drop" onClick={() => fileRef.current && fileRef.current.click()}>
-                  <input ref={fileRef} type="file" hidden onChange={(e) => set("fileName", e.target.files[0] ? e.target.files[0].name : "")} />
+                <div className="drop"
+                  onClick={() => fileRef.current && fileRef.current.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files[0];
+                    if (file) setF((p) => ({ ...p, fileName: file.name, fileObj: file }));
+                  }}
+                >
+                  <input ref={fileRef} type="file" hidden
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) setF((p) => ({ ...p, fileName: file.name, fileObj: file }));
+                    }} />
                   <div className="drop-ico"><I.upload /></div>
                   <div className="drop-main">{f.fileName ? f.fileName : <>Drop a file or <b>browse</b></>}</div>
-                  <div className="drop-sub">{f.fileName ? "ready to upload" : "PDF, MP4, DOCX up to 200MB"}</div>
+                  <div className="drop-sub">{f.fileName ? (uploading ? "Uploading…" : "Ready — will upload on save") : "PDF, MP4, DOCX up to 200MB"}</div>
                 </div>
               )}
+              {uploadErr && <span className="field-hint" style={{ color: "var(--red)" }}>{uploadErr}</span>}
             </div>
 
             <div className="fg fg-full">
@@ -396,9 +432,9 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
             </div>
             <div className="form-foot-right">
               <button className="btn btn-ghost" onClick={onCancel}>Cancel</button>
-              <button className="btn" onClick={() => submit("draft")}>Save draft</button>
-              <button className="btn btn-gold" onClick={() => submit("published")}>
-                {editing ? "Save & Publish" : "Publish"}<span className="arr">→</span>
+              <button className="btn" onClick={() => submit("draft")} disabled={uploading}>Save draft</button>
+              <button className="btn btn-gold" onClick={() => submit("published")} disabled={uploading}>
+                {uploading ? "Uploading…" : (editing ? "Save & Publish" : "Publish")}<span className="arr">→</span>
               </button>
             </div>
           </div>
