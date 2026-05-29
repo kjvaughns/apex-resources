@@ -609,7 +609,19 @@ function QuickLinksView({ links, onSave }) {
   const set = (id, key, val) => { setRows((p) => p.map((r) => r.id === id ? { ...r, [key]: val } : r)); setSaved(false); };
   const add = () => { setRows((p) => [...p, { id: "ql-" + Date.now().toString(36), label: "", sub: "", href: "" }]); setSaved(false); };
   const remove = (id) => { setRows((p) => p.filter((r) => r.id !== id)); setSaved(false); };
-  const save = () => { isSaving.current = true; onSave(rows.filter((r) => r.label.trim())); setSaved(true); };
+  const normalizeHref = (href) => {
+    const h = href.trim();
+    if (!h || h === "#") return h;
+    return /^https?:\/\//i.test(h) ? h : "https://" + h;
+  };
+  const save = () => {
+    isSaving.current = true;
+    const normalized = rows
+      .filter((r) => r.label.trim())
+      .map((r) => ({ ...r, href: normalizeHref(r.href) }));
+    onSave(normalized);
+    setSaved(true);
+  };
 
   return (
     <div className="content">

@@ -194,6 +194,11 @@ function Modal({ item, onClose }) {
   );
 }
 
+function toAbsoluteHref(href) {
+  if (!href || href === "#") return "#";
+  return /^https?:\/\//i.test(href) ? href : "https://" + href;
+}
+
 function QuickLinks({ links }) {
   return (
     <div className="quicklinks">
@@ -204,7 +209,7 @@ function QuickLinks({ links }) {
       </div>
       <div className="ql-grid">
         {links.map((l) => (
-          <a key={l.label} className="ql-card" href={l.href} target="_blank" rel="noreferrer">
+          <a key={l.label} className="ql-card" href={toAbsoluteHref(l.href)} target="_blank" rel="noreferrer">
             <span className="ql-name">{l.label}<span className="ql-ext">↗</span></span>
             <span className="ql-sub">{l.sub}</span>
           </a>
