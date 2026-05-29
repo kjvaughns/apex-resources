@@ -686,11 +686,22 @@ function App() {
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         toast("Save failed: " + (j.error || "HTTP " + r.status), true);
+        return false;
       }
+      return true;
     } catch {
       toast("Save failed — network error", true);
+      return false;
     }
   }, [toast]);
+
+  const setResourcesAndSave = useCallback((updater) => {
+    setResources((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      apiSave("apex:resources", next);
+      return next;
+    });
+  }, [apiSave]);
 
   const transcribeIfNeeded = useCallback(async (rec) => {
     if (!rec.source || rec.status !== "published") return;
@@ -728,11 +739,14 @@ function App() {
       body: JSON.stringify({ password: p }),
     })
       .then(async (r) => {
-        const d = await r.json();
-        if (!d.ok) {
-          // Auth failed — clear session and force re-login
+        if (r.status === 401) {
           try { sessionStorage.removeItem("apex_admin_auth"); sessionStorage.removeItem("apex_admin_pw"); } catch (e) {}
           setAuthed(false);
+          return;
+        }
+        const d = await r.json();
+        if (!d.ok) {
+          toast("Failed to load from database: " + (d.error || "unknown error"), true);
           return;
         }
         setRecordings(d.recordings);
@@ -752,19 +766,19 @@ function App() {
   const openEdit = (item) => { setEditing(item); setRoute("edit"); window.scrollTo(0, 0); };
   const openRec = (item) => { setEditing(item); setRoute("recording-form"); window.scrollTo(0, 0); };
 
-  const save = (data, wasEditing) => {
+  const save = async (data, wasEditing) => {
     const updated = wasEditing ? resources.map((r) => r.id === data.id ? data : r) : [data, ...resources];
     setResources(updated);
-    apiSave("apex:resources", updated);
-    toast(wasEditing ? "Changes saved" : (data.status === "draft" ? "Saved as draft" : "Resource published"));
+    const ok = await apiSave("apex:resources", updated);
+    if (ok) toast(wasEditing ? "Changes saved" : (data.status === "draft" ? "Saved as draft" : "Resource published"));
     setRoute("manage"); setEditing(null); setPresetType(null); window.scrollTo(0, 0);
   };
-  const saveRec = (data, wasEditing) => {
+  const saveRec = async (data, wasEditing) => {
     const updated = wasEditing ? recordings.map((r) => r.id === data.id ? data : r) : [data, ...recordings];
     setRecordings(updated);
-    apiSave("apex:recordings", updated);
+    const ok = await apiSave("apex:recordings", updated);
     transcribeIfNeeded(data);
-    toast(wasEditing ? "Recording saved" : (data.status === "draft" ? "Saved as draft" : "Recording published"));
+    if (ok) toast(wasEditing ? "Recording saved" : (data.status === "draft" ? "Saved as draft" : "Recording published"));
     setRoute("recordings"); setEditing(null); window.scrollTo(0, 0);
   };
   const addPresenter = ({ name, role }) => {
@@ -774,27 +788,27 @@ function App() {
     apiSave("apex:presenters", updated);
     return np;
   };
-  const updateQuickLinks = (updated) => {
+  const updateQuickLinks = async (updated) => {
     setQuickLinks(updated);
-    apiSave("apex:quicklinks", updated);
-    toast("Quick links saved");
+    const ok = await apiSave("apex:quicklinks", updated);
+    if (ok) toast("Quick links saved");
   };
   const updatePresenters = useCallback((updated) => {
     setPresenters(updated);
     apiSave("apex:presenters", updated);
   }, [apiSave]);
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!toDelete) return;
     if (toDelete.kind === "recording") {
       const updated = recordings.filter((r) => r.id !== toDelete.item.id);
       setRecordings(updated);
-      apiSave("apex:recordings", updated);
-      toast("Recording deleted");
+      const ok = await apiSave("apex:recordings", updated);
+      if (ok) toast("Recording deleted");
     } else {
       const updated = resources.filter((r) => r.id !== toDelete.item.id);
       setResources(updated);
-      apiSave("apex:resources", updated);
-      toast("Resource deleted");
+      const ok = await apiSave("apex:resources", updated);
+      if (ok) toast("Resource deleted");
     }
     setToDelete(null);
   };
@@ -837,7 +851,7 @@ function App() {
             onSave={save} onCancel={() => { setRoute(editing ? "manage" : "dashboard"); setEditing(null); }} />
         )}
         {route === "manage" && (
-          <ManageTable resources={resources} setResources={setResources}
+          <ManageTable resources={resources} setResources={setResourcesAndSave}
             onEdit={openEdit} onDelete={(r) => setToDelete({ item: r, kind: "resource" })} presetFilter={presetFilter} density={t.density} />
         )}
         {route === "recordings" && (

@@ -28,13 +28,7 @@ module.exports = async (req, res) => {
       resources: kvRes || defaults.resources,
       quickLinks: kvQL || defaults.quickLinks,
     });
-  } catch {
-    res.json({
-      ok: true,
-      recordings: defaults.recordings,
-      presenters: defaults.presenters,
-      resources: defaults.resources,
-      quickLinks: defaults.quickLinks,
-    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: "DB error: " + e.message });
   }
 };
