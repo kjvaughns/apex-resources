@@ -678,6 +678,27 @@ function App() {
     } catch (e) {}
   }, []);
 
+  const transcribeIfNeeded = useCallback(async (rec) => {
+    if (!rec.source || rec.status !== "published") return;
+    try {
+      const existing = await fetch("/api/transcripts").then((r) => r.json());
+      const ex = existing[rec.id];
+      if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) return;
+      const r = await fetch("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: rec.source }),
+      });
+      if (!r.ok) return;
+      const { id } = await r.json();
+      fetch("/api/transcripts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recId: rec.id, entry: { status: "queued", jobId: id } }),
+      }).catch(() => {});
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (!authed) return;
     fetch("/api/admin/load", {
@@ -723,6 +744,7 @@ function App() {
     const updated = wasEditing ? recordings.map((r) => r.id === data.id ? data : r) : [data, ...recordings];
     setRecordings(updated);
     apiSave("apex:recordings", updated);
+    transcribeIfNeeded(data);
     toast(wasEditing ? "Recording saved" : (data.status === "draft" ? "Saved as draft" : "Recording published"));
     setRoute("recordings"); setEditing(null); window.scrollTo(0, 0);
   };

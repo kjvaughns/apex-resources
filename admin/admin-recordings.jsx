@@ -256,7 +256,20 @@ function RecordingsView({ recordings, setRecordings, presenters, setPresenters, 
   useEffectR(() => {
     fetch("/api/transcripts")
       .then((r) => r.json())
-      .then((d) => { tsRef.current = d || {}; setTsData(d || {}); setTsLoaded(true); })
+      .then((d) => {
+        const ts = d || {};
+        tsRef.current = ts;
+        setTsData(ts);
+        setTsLoaded(true);
+        const hasPending = Object.values(ts).some(
+          (v) => ["queued", "processing"].includes(v?.status) && v?.jobId
+        );
+        if (hasPending) {
+          setTsRunning(true);
+          pollRef.current = setInterval(pollOnce, 15000);
+          pollOnce();
+        }
+      })
       .catch(() => setTsLoaded(true));
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
