@@ -9,7 +9,7 @@ const TYPE_META = {
   guide:    { label: "Guide",    color: "#46A758", icon: "guide",    plural: "Guides" },
   tool:     { label: "Tool",     color: "#9A6BE0", icon: "tool",     plural: "Tools" },
 };
-const TYPE_ORDER = ["pdf", "training", "guide", "tool"];
+const TYPE_ORDER = ["pdf", "training", "guide", "tool", "video"];
 const STAT_TYPES = ["pdf", "training", "guide"];
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -243,11 +243,12 @@ function blankForm(type) {
     thumbMode: "url", thumb: "", thumbFile: "", tags: [], duration: "", featured: false, isNew: false,
     date: todayISO(), status: "published" };
 }
+const isLocalPath = (l) => l && (l.startsWith("assets/") || l.startsWith("uploads/"));
 function fromItem(item) {
   return { ...blankForm(item.type), title: item.title, type: item.type, desc: item.desc || "",
-    sourceMode: (item.link && item.link.startsWith("assets/")) ? "upload" : "link",
-    link: (item.link && item.link.startsWith("assets/")) ? "" : (item.link || ""),
-    fileName: (item.link && item.link.startsWith("assets/")) ? item.link.split("/").pop() : "",
+    sourceMode: isLocalPath(item.link) ? "upload" : "link",
+    link: isLocalPath(item.link) ? "" : (item.link || ""),
+    fileName: isLocalPath(item.link) ? item.link.split("/").pop() : "",
     thumb: item.thumb || "", tags: item.tags || [], duration: item.duration || "",
     featured: !!item.featured, isNew: !!item.isNew, date: item.date || todayISO(), status: item.status || "published" };
 }
