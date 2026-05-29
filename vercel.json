@@ -2,6 +2,16 @@
   "redirects": [
     { "source": "/admin", "destination": "/admin/", "permanent": false }
   ],
+  "headers": [
+    {
+      "source": "/admin/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+    },
+    {
+      "source": "/admin/",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+    }
+  ],
   "functions": {
     "api/transcribe.js": { "maxDuration": 30 },
     "api/transcribe-status.js": { "maxDuration": 10 },
