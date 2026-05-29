@@ -158,6 +158,7 @@ function fmt(s) {
   const m = Math.floor(s / 60), ss = s % 60;
   return m + ":" + String(ss).padStart(2, "0");
 }
+function fmtMs(ms) { return fmt(Math.floor(ms / 1000)); }
 
 function PresenterSelector({ presenters, selected, onSelect }) {
   return (
@@ -376,6 +377,238 @@ function RecordedPresentations() {
   );
 }
 
+const SPEAKER_COLORS = { A: "#C9A84C", B: "#4C7DF0", C: "#46A758", D: "#E5484D", E: "#AB7DF0", F: "#0BC5C5" };
+
+function DropZone({ file, onFile }) {
+  const [over, setOver] = useState(false);
+  const inputRef = useRef(null);
+  const drop = (e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files[0]; if (f) onFile(f); };
+  return (
+    <div
+      className={"tr-dropzone" + (over ? " tr-dropzone-over" : "")}
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={drop}
+      onClick={() => inputRef.current?.click()}
+      role="button" tabIndex={0}
+    >
+      <input ref={inputRef} type="file" accept="audio/*,video/*,.mp3,.mp4,.wav,.m4a,.mov"
+        style={{ display: "none" }}
+        onChange={(e) => { const f = e.target.files[0]; if (f) onFile(f); }}
+        onClick={(e) => e.stopPropagation()} />
+      <span className="tr-drop-icon">⬆</span>
+      {file ? (
+        <span className="tr-drop-file">📎 {file.name}</span>
+      ) : (
+        <>
+          <span className="tr-drop-label">Drop audio or video file here</span>
+          <span className="tr-drop-sub">MP3, MP4, WAV, M4A, MOV — or click to browse</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TranscriberView() {
+  const [tab, setTab] = useState("url");
+  const [url, setUrl] = useState("");
+  const [file, setFile] = useState(null);
+  const [phase, setPhase] = useState("idle"); // idle | loading | done | error
+  const [statusMsg, setStatusMsg] = useState("");
+  const [result, setResult] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [copied, setCopied] = useState(false);
+  const pollRef = useRef(null);
+
+  useEffect(() => () => clearInterval(pollRef.current), []);
+
+  const canSubmit = tab === "url" ? url.trim().length > 0 : !!file;
+
+  async function submit() {
+    setPhase("loading");
+    setStatusMsg("Starting transcription…");
+    setErrorMsg("");
+    try {
+      let res;
+      if (tab === "url") {
+        res = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url.trim() }),
+        });
+      } else {
+        const fd = new FormData();
+        fd.append("file", file);
+        res = await fetch("/api/transcribe", { method: "POST", body: fd });
+      }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || `Server error ${res.status}`);
+      }
+      const { id } = await res.json();
+      setStatusMsg("Audio received — processing…");
+      pollRef.current = setInterval(async () => {
+        try {
+          const sr = await fetch(`/api/transcribe-status?id=${encodeURIComponent(id)}`);
+          const data = await sr.json();
+          if (data.status === "completed") {
+            clearInterval(pollRef.current);
+            setResult(data);
+            setPhase("done");
+          } else if (data.status === "error") {
+            clearInterval(pollRef.current);
+            throw new Error(data.error || "Transcription failed");
+          } else {
+            setStatusMsg(data.status === "queued" ? "Queued — waiting for a processing slot…" : "Transcribing audio…");
+          }
+        } catch (e) {
+          clearInterval(pollRef.current);
+          setErrorMsg(e.message);
+          setPhase("error");
+        }
+      }, 5000);
+    } catch (e) {
+      setErrorMsg(e.message);
+      setPhase("error");
+    }
+  }
+
+  function reset() {
+    clearInterval(pollRef.current);
+    setPhase("idle"); setUrl(""); setFile(null); setResult(null); setErrorMsg(""); setCopied(false);
+  }
+
+  function copyAll() {
+    const lines = result?.utterances?.length
+      ? result.utterances.map((u) => `[${fmtMs(u.startMs)}]${u.speaker ? ` Speaker ${u.speaker}:` : ""} ${u.text}`)
+      : [result?.text || ""];
+    navigator.clipboard.writeText(lines.join("\n")).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  function downloadTxt() {
+    if (!result) return;
+    let out = "";
+    if (result.summary) out += `SUMMARY\n${"─".repeat(60)}\n${result.summary}\n\n`;
+    if (result.keywords?.length) out += `KEY TERMS\n${"─".repeat(60)}\n${result.keywords.map((k) => `${k.text} (${k.count}x)`).join("  ·  ")}\n\n`;
+    out += `TRANSCRIPT\n${"─".repeat(60)}\n`;
+    if (result.utterances?.length) {
+      result.utterances.forEach((u) => { out += `[${fmtMs(u.startMs)}]${u.speaker ? ` Speaker ${u.speaker}:` : ""} ${u.text}\n`; });
+    } else { out += result.text || ""; }
+    const a = Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(new Blob([out], { type: "text/plain" })),
+      download: "transcript.txt",
+    });
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+
+  return (
+    <main className="container">
+      <section className="hero">
+        <p className="hero-kicker">Transcriber</p>
+        <h1 className="hero-title">Instant transcripts.</h1>
+        <p className="hero-sub">Paste a Google Drive link or upload an audio/video file — get a timestamped transcript with speaker labels and an AI summary in minutes.</p>
+      </section>
+
+      {phase === "idle" && (
+        <div className="tr-input-card">
+          <div className="tr-type-tabs">
+            <button className={"tr-type-tab" + (tab === "url" ? " tr-type-tab-on" : "")} onClick={() => setTab("url")}>🔗 Paste Link</button>
+            <button className={"tr-type-tab" + (tab === "file" ? " tr-type-tab-on" : "")} onClick={() => setTab("file")}>⬆ Upload File</button>
+          </div>
+          {tab === "url" ? (
+            <>
+              <input className="tr-url-field" type="url"
+                placeholder="Paste a Google Drive or Vimeo link…"
+                value={url} onChange={(e) => setUrl(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && canSubmit && submit()} />
+              <p className="tr-url-hint">Google Drive: make sure sharing is set to "Anyone with the link → Viewer"</p>
+            </>
+          ) : (
+            <DropZone file={file} onFile={setFile} />
+          )}
+          <button className="tr-submit" disabled={!canSubmit} onClick={submit}>
+            Transcribe <span className="cta-arrow">→</span>
+          </button>
+        </div>
+      )}
+
+      {phase === "loading" && (
+        <div className="tr-processing">
+          <div className="tr-spinner" />
+          <p className="tr-proc-label">Transcribing</p>
+          <p className="tr-proc-sub">{statusMsg}</p>
+          <p className="tr-proc-sub" style={{ color: "var(--muted-2)", marginTop: 2 }}>
+            Usually takes 1–3 minutes. Keep this tab open.
+          </p>
+        </div>
+      )}
+
+      {phase === "error" && (
+        <div className="tr-processing">
+          <p className="tr-proc-label" style={{ color: "#E5484D" }}>Transcription Failed</p>
+          <p className="tr-proc-sub">{errorMsg}</p>
+          <button className="tr-submit" style={{ marginTop: 20 }} onClick={reset}>Try Again</button>
+        </div>
+      )}
+
+      {phase === "done" && result && (
+        <div className="tr-result">
+          <div className="tr-actions">
+            <button className="tr-action-btn" onClick={copyAll}>{copied ? "✓ Copied!" : "⎘ Copy Text"}</button>
+            <button className="tr-action-btn" onClick={downloadTxt}>↓ Download .txt</button>
+            <button className="tr-action-btn tr-action-new" onClick={reset}>+ New Transcript</button>
+          </div>
+
+          {result.summary && (
+            <div className="tr-summary">
+              <span className="tr-summary-label">AI Summary</span>
+              <p className="tr-summary-text">{result.summary}</p>
+            </div>
+          )}
+
+          {result.keywords?.length > 0 && (
+            <div className="tr-keywords">
+              {result.keywords.slice(0, 16).map((k, i) => (
+                <span key={i} className="tr-kw">{k.text}<span className="tr-kw-count">×{k.count}</span></span>
+              ))}
+            </div>
+          )}
+
+          <div className="tr-transcript-box">
+            <div className="tr-transcript-head">
+              <span className="tr-transcript-label">Transcript</span>
+              {result.utterances?.length > 0 && (
+                <span className="tr-transcript-count">{result.utterances.length} segments</span>
+              )}
+            </div>
+            <div className="tr-transcript-body">
+              {result.utterances?.length > 0 ? (
+                result.utterances.map((u, i) => (
+                  <div key={i} className="tr-utterance">
+                    <div className="tr-utt-left">
+                      <span className="tr-utt-ts">{fmtMs(u.startMs)}</span>
+                      {u.speaker && (
+                        <span className="tr-speaker" style={{ "--sc": SPEAKER_COLORS[u.speaker] || "var(--gold)" }}>
+                          {u.speaker}
+                        </span>
+                      )}
+                    </div>
+                    <span className="tr-utt-text">{u.text}</span>
+                  </div>
+                ))
+              ) : (
+                <pre className="tr-plain">{result.text}</pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Footer />
+    </main>
+  );
+}
+
 function Footer() {
   return (
     <footer className="foot">
@@ -417,12 +650,19 @@ const HUB = [
     label: "Resource Library",
     desc: "Scripts, carrier guides, trainings, and PDFs — searchable and filterable by type.",
   },
+  {
+    route: "transcriber",
+    num: "03",
+    label: "Transcriber",
+    desc: "Paste a Google Drive link or upload a file — get a timestamped transcript with speaker labels and an AI summary.",
+  },
 ];
 
 function HomeView() {
   const meta = {
     presentations: window.APEX_PRESENTERS.length + " presenters · " + window.APEX_RECORDINGS.length + " recordings",
     library: window.APEX_RESOURCES.length + " resources",
+    transcriber: "Google Drive · File upload",
   };
   return (
     <main className="container">
@@ -552,12 +792,12 @@ function App() {
     );
   }
 
-  const valid = route === "presentations" || route === "library" ? route : "home";
+  const valid = ["presentations", "library", "transcriber"].includes(route) ? route : "home";
 
   return (
     <div className="page" data-density={t.density} data-cardstyle={t.cardStyle} style={rootStyle}>
       <TopBar route={valid} />
-      {valid === "presentations" ? <PresentationsView /> : valid === "library" ? <LibraryView t={t} /> : <HomeView />}
+      {valid === "presentations" ? <PresentationsView /> : valid === "library" ? <LibraryView t={t} /> : valid === "transcriber" ? <TranscriberView /> : <HomeView />}
 
       <TweaksPanel>
         <TweakSection label="Brand" />

@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/transcribe.js": {
+      "maxDuration": 30
+    },
+    "api/transcribe-status.js": {
+      "maxDuration": 10
+    }
+  }
+}
