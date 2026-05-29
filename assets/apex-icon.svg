@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 90">
+  <defs>
+    <linearGradient id="gold" x1="25%" y1="0%" x2="75%" y2="100%">
+      <stop offset="0%"   stop-color="#D4A840"/>
+      <stop offset="45%"  stop-color="#F2D060"/>
+      <stop offset="100%" stop-color="#8B6410"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer gold triangle -->
+  <polygon points="50,4 96,86 4,86" fill="url(#gold)"/>
+  <!-- Dark inner cutout creating the A letterform -->
+  <polygon points="50,22 69,78 31,78" fill="#0d0d0d"/>
+  <!-- Gold crossbar of the A -->
+  <polygon points="36,63 64,63 61,78 39,78" fill="url(#gold)"/>
+</svg>
