@@ -199,6 +199,13 @@ function toAbsoluteHref(href) {
   return /^https?:\/\//i.test(href) ? href : "https://" + href;
 }
 
+function toEmbedUrl(src) {
+  if (!src) return src;
+  const m = src.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
+  if (m) return "https://drive.google.com/file/d/" + m[1] + "/preview";
+  return src;
+}
+
 function QuickLinks({ links }) {
   return (
     <div className="quicklinks">
@@ -407,7 +414,7 @@ function MediaPlayer({ rec, tsEntry }) {
     <div className="mp">
       {hasVideo ? (
         <div className={"media-stage " + (rec.audio ? "media-stage-audio" : "media-stage-video")}>
-          <iframe className="media-frame" src={rec.video} title={rec.title} allow="autoplay; fullscreen" allowFullScreen></iframe>
+          <iframe className="media-frame" src={toEmbedUrl(rec.video)} title={rec.title} allow="autoplay; fullscreen" allowFullScreen></iframe>
         </div>
       ) : (
         <div className="media-stage" onClick={toggle}>
