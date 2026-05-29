@@ -58,4 +58,11 @@ const resources = [
     tags: ["tool", "quoting", "calculator"], duration: "", link: "#" },
 ];
 
-module.exports = { recordings, presenters, resources };
+const quickLinks = [
+  { id: "ql-insura", label: "InsuraCloud", sub: "Quoting & e-apps", href: "#" },
+  { id: "ql-ready",  label: "Readymode",   sub: "Power dialer",     href: "#" },
+  { id: "ql-agent",  label: "AgentLink",   sub: "Contracting & comp", href: "#" },
+  { id: "ql-web",    label: "Website",     sub: "apexfinancialempire.com", href: "#" },
+];
+
+module.exports = { recordings, presenters, resources, quickLinks };

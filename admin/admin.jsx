@@ -107,6 +107,8 @@ const NAV = [
   { sect: "Resource Library" },
   { key: "manage", label: "Manage Resources", icon: "list" },
   { key: "add", label: "Add Resource", icon: "plus" },
+  { sect: "Site Settings" },
+  { key: "quicklinks", label: "Quick Links", icon: "link" },
 ];
 function Sidebar({ route, onNav, onLogout, count }) {
   return (
@@ -555,6 +557,68 @@ function DeleteModal({ item, label = "resource", onConfirm, onClose }) {
   );
 }
 
+// ── QUICK LINKS ────────────────────────────────────────────────────────────────
+function QuickLinksView({ links, onSave }) {
+  const [rows, setRows] = useState(() => links.map((l) => ({ ...l })));
+  const [saved, setSaved] = useState(false);
+
+  const linksKey = links.map((l) => l.id).join(",");
+  useEffect(() => { setRows(links.map((l) => ({ ...l }))); setSaved(false); }, [linksKey]);
+
+  const set = (id, key, val) => { setRows((p) => p.map((r) => r.id === id ? { ...r, [key]: val } : r)); setSaved(false); };
+  const add = () => { setRows((p) => [...p, { id: "ql-" + Date.now().toString(36), label: "", sub: "", href: "" }]); setSaved(false); };
+  const remove = (id) => { setRows((p) => p.filter((r) => r.id !== id)); setSaved(false); };
+  const save = () => { onSave(rows.filter((r) => r.label.trim())); setSaved(true); };
+
+  return (
+    <div className="content">
+      <div className="tbl-tools">
+        <span style={{ color: "var(--muted)", fontSize: 13, flex: 1 }}>
+          Quick links appear on the hub home screen for all agents.
+        </span>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="btn" onClick={add}><I.plus />Add link</button>
+          <button className="btn btn-gold" onClick={save}>
+            {saved ? <><I.check /> Saved</> : "Save changes"}
+          </button>
+        </div>
+      </div>
+      <div className="tbl-wrap">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th>Subtitle</th>
+              <th>URL</th>
+              <th style={{ width: 56 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan="4"><div className="tbl-empty">
+                <p className="tbl-empty-big">No quick links</p>
+                <p className="tbl-empty-sub">Add links agents need fast access to.</p>
+              </div></td></tr>
+            ) : rows.map((r) => (
+              <tr key={r.id}>
+                <td><input className="field field-sm" value={r.label} placeholder="e.g. InsuraCloud"
+                  onChange={(e) => set(r.id, "label", e.target.value)} /></td>
+                <td><input className="field field-sm" value={r.sub} placeholder="e.g. Quoting & e-apps"
+                  onChange={(e) => set(r.id, "sub", e.target.value)} /></td>
+                <td><input className="field field-sm" value={r.href} placeholder="https://…"
+                  onChange={(e) => set(r.id, "href", e.target.value)} /></td>
+                <td style={{ textAlign: "right" }}>
+                  <button className="icon-btn danger" onClick={() => remove(r.id)} title="Delete"><I.trash /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── TOASTS ─────────────────────────────────────────────────────────────────────
 function Toasts({ items }) {
   return (
@@ -578,6 +642,7 @@ const TITLES = {
   edit: { crumb: "Resource Library", h: "Edit Resource" },
   manage: { crumb: "Resource Library", h: "Manage Resources" },
   recordings: { crumb: "Recorded Presentations", h: "Recordings" },
+  quicklinks: { crumb: "Site Settings", h: "Quick Links" },
 };
 
 function App() {
@@ -589,6 +654,12 @@ function App() {
   const [resources, setResources] = useState(buildSeed);
   const [recordings, setRecordings] = useState(buildRecordings);
   const [presenters, setPresenters] = useState(buildPresenters);
+  const [quickLinks, setQuickLinks] = useState([
+    { id: "ql-insura", label: "InsuraCloud", sub: "Quoting & e-apps", href: "#" },
+    { id: "ql-ready",  label: "Readymode",   sub: "Power dialer",     href: "#" },
+    { id: "ql-agent",  label: "AgentLink",   sub: "Contracting & comp", href: "#" },
+    { id: "ql-web",    label: "Website",     sub: "apexfinancialempire.com", href: "#" },
+  ]);
   const [editing, setEditing] = useState(null);
   const [presetType, setPresetType] = useState(null);
   const [presetFilter, setPresetFilter] = useState(null);
@@ -620,6 +691,7 @@ function App() {
           setRecordings(d.recordings);
           setPresenters(d.presenters);
           setResources(d.resources);
+          if (d.quickLinks) setQuickLinks(d.quickLinks);
         }
       })
       .catch(() => {});
@@ -660,6 +732,11 @@ function App() {
     setPresenters(updated);
     apiSave("apex:presenters", updated);
     return np;
+  };
+  const updateQuickLinks = (updated) => {
+    setQuickLinks(updated);
+    apiSave("apex:quicklinks", updated);
+    toast("Quick links saved");
   };
   const updatePresenters = useCallback((updated) => {
     setPresenters(updated);
@@ -704,7 +781,7 @@ function App() {
             <span className="topbar-h">{meta.h}</span>
           </div>
           <div className="topbar-actions">
-            {!onForm && (route === "recordings"
+            {!onForm && route !== "quicklinks" && (route === "recordings"
               ? <button className="btn btn-gold" onClick={() => openRec(null)}><I.plus />New Recording</button>
               : <button className="btn btn-gold" onClick={() => openAdd(null)}><I.plus />New Resource</button>)}
           </div>
@@ -731,6 +808,9 @@ function App() {
           <RecordingForm key={editing ? editing.id : "new-rec"} editing={editing} presenters={presenters}
             onAddPresenter={addPresenter} onSave={saveRec}
             onCancel={() => { setRoute("recordings"); setEditing(null); }} />
+        )}
+        {route === "quicklinks" && (
+          <QuickLinksView links={quickLinks} onSave={updateQuickLinks} />
         )}
       </div>
 

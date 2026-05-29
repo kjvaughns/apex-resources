@@ -718,6 +718,7 @@ function App() {
         if (d.recordings) window.APEX_RECORDINGS = d.recordings;
         if (d.presenters) window.APEX_PRESENTERS = d.presenters;
         if (d.resources) window.APEX_RESOURCES = d.resources;
+        if (d.quickLinks) window.APEX_QUICKLINKS = d.quickLinks;
         setApiRev((n) => n + 1);
       })
       .catch(() => {});

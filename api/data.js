@@ -55,16 +55,18 @@ module.exports = async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
 
   try {
-    const [kvRecs, kvPres, kvRes] = await Promise.all([
+    const [kvRecs, kvPres, kvRes, kvQL] = await Promise.all([
       kv.get("apex:recordings"),
       kv.get("apex:presenters"),
       kv.get("apex:resources"),
+      kv.get("apex:quicklinks"),
     ]);
 
     // Auto-seed on first access
     if (kvRecs === null) kv.set("apex:recordings", defaults.recordings).catch(() => {});
     if (kvPres === null) kv.set("apex:presenters", defaults.presenters).catch(() => {});
     if (kvRes === null) kv.set("apex:resources", defaults.resources).catch(() => {});
+    if (kvQL === null) kv.set("apex:quicklinks", defaults.quickLinks).catch(() => {});
 
     const recordings = (kvRecs || defaults.recordings)
       .filter((r) => r.status === "published")
@@ -76,7 +78,9 @@ module.exports = async (req, res) => {
       .filter((r) => r.status === "published")
       .map(toPublicRes);
 
-    res.json({ recordings, presenters, resources });
+    const quickLinks = kvQL || defaults.quickLinks;
+
+    res.json({ recordings, presenters, resources, quickLinks });
   } catch {
     const recordings = defaults.recordings
       .filter((r) => r.status === "published")
@@ -84,6 +88,6 @@ module.exports = async (req, res) => {
     const resources = defaults.resources
       .filter((r) => r.status === "published")
       .map(toPublicRes);
-    res.json({ recordings, presenters: defaults.presenters, resources });
+    res.json({ recordings, presenters: defaults.presenters, resources, quickLinks: defaults.quickLinks });
   }
 };

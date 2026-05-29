@@ -8,22 +8,25 @@ module.exports = async (req, res) => {
   if (password !== process.env.ADMIN_PASSWORD) return res.status(401).json({ ok: false });
 
   try {
-    const [kvRecs, kvPres, kvRes] = await Promise.all([
+    const [kvRecs, kvPres, kvRes, kvQL] = await Promise.all([
       kv.get("apex:recordings"),
       kv.get("apex:presenters"),
       kv.get("apex:resources"),
+      kv.get("apex:quicklinks"),
     ]);
 
     // Auto-seed on first access
     if (kvRecs === null) kv.set("apex:recordings", defaults.recordings).catch(() => {});
     if (kvPres === null) kv.set("apex:presenters", defaults.presenters).catch(() => {});
     if (kvRes === null) kv.set("apex:resources", defaults.resources).catch(() => {});
+    if (kvQL === null) kv.set("apex:quicklinks", defaults.quickLinks).catch(() => {});
 
     res.json({
       ok: true,
       recordings: kvRecs || defaults.recordings,
       presenters: kvPres || defaults.presenters,
       resources: kvRes || defaults.resources,
+      quickLinks: kvQL || defaults.quickLinks,
     });
   } catch {
     res.json({
@@ -31,6 +34,7 @@ module.exports = async (req, res) => {
       recordings: defaults.recordings,
       presenters: defaults.presenters,
       resources: defaults.resources,
+      quickLinks: defaults.quickLinks,
     });
   }
 };

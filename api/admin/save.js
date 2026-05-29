@@ -1,7 +1,7 @@
 const { Redis } = require("@upstash/redis");
 const kv = new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN });
 
-const ALLOWED = ["apex:recordings", "apex:presenters", "apex:resources"];
+const ALLOWED = ["apex:recordings", "apex:presenters", "apex:resources", "apex:quicklinks"];
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).end();
