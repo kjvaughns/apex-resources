@@ -84,8 +84,6 @@ function RecordingForm({ editing, presenters, onAddPresenter, onSave, onCancel }
     const s = url.trim();
     if (!s) return "A recording link is required to publish.";
     if (!/^https?:\/\/.+/.test(s)) return "Enter a valid URL starting with https://";
-    if (s.includes("drive.google.com") && !/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+/.test(s))
-      return "Invalid Google Drive link — copy the full share URL from the file (it should contain /file/d/…).";
     return "";
   };
 
