@@ -17,10 +17,13 @@ function parseDriveUrl(url) {
   return m ? `https://drive.google.com/uc?export=download&id=${m[1]}&confirm=t` : url;
 }
 
-function normalizeUrl(raw) {
-  const url = raw.trim();
-  if (url.includes('drive.google.com')) return parseDriveUrl(url);
-  return url;
+async function fetchDriveBuffer(url) {
+  const dlUrl = parseDriveUrl(url);
+  const res = await fetch(dlUrl, { redirect: "follow" });
+  if (!res.ok) throw new Error(`Google Drive returned HTTP ${res.status}`);
+  const ct = res.headers.get("content-type") || "";
+  if (ct.startsWith("text/")) throw new Error("Google Drive returned an HTML page — make sure the file is shared as 'Anyone with the link'");
+  return Buffer.from(await res.arrayBuffer());
 }
 
 function parseUpload(req) {
@@ -64,7 +67,12 @@ module.exports = async function handler(req, res) {
     if (ct === 'application/json') {
       const body = JSON.parse((await getRawBody(req)).toString());
       if (!body.url) return res.status(400).json({ error: 'url required' });
-      audioUrl = normalizeUrl(body.url);
+      if (body.url.includes('drive.google.com')) {
+        const buffer = await fetchDriveBuffer(body.url.trim());
+        audioUrl = await client.files.upload(buffer);
+      } else {
+        audioUrl = body.url.trim();
+      }
     } else {
       const buffer = await parseUpload(req);
       audioUrl = await client.files.upload(buffer);

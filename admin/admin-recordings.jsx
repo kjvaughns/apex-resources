@@ -464,7 +464,7 @@ function RecordingsView({ recordings, setRecordings, presenters, setPresenters, 
                     const ts = tsData[r.id];
                     if (!ts) return <span style={{ color:"var(--muted-2)", fontSize:12 }}>—</span>;
                     if (ts.status === "completed") return <span style={{ color:"#46A758", fontSize:12, fontWeight:600 }}>✓ Done</span>;
-                    if (ts.status === "error") return <span style={{ color:"var(--red)", fontSize:12 }}>Error</span>;
+                    if (ts.status === "error") return <span style={{ color:"var(--red)", fontSize:12 }} title={ts.error || "Transcription failed"}>Error{ts.error ? `: ${ts.error.slice(0, 55)}` : ""}</span>;
                     return <span style={{ color:"var(--gold)", fontSize:12, textTransform:"capitalize" }}>{ts.status}</span>;
                   })()}</td>
                   <td>
