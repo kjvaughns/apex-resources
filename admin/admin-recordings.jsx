@@ -82,11 +82,10 @@ function RecordingForm({ editing, presenters, onAddPresenter, onSave, onCancel }
   const validateSource = (url, status) => {
     if (status !== "published") return "";
     const s = url.trim();
-    if (!s) return "A recording link is required to publish. Follow the steps below to get one from Google Drive.";
+    if (!s) return "A recording link is required to publish.";
+    if (!/^https?:\/\/.+/.test(s)) return "Enter a valid URL starting with https://";
     if (s.includes("drive.google.com") && !/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+/.test(s))
       return "Invalid Google Drive link — copy the full share URL from the file (it should contain /file/d/…).";
-    if (!s.includes("drive.google.com"))
-      return "Only Google Drive links are supported. Follow the steps below to get the correct link.";
     return "";
   };
 
@@ -168,17 +167,17 @@ function RecordingForm({ editing, presenters, onAddPresenter, onSave, onCancel }
             </div>
 
             <div className="fg fg-full">
-              <label className="lbl">Recording link <span className="lbl-opt">Google Drive share URL</span></label>
+              <label className="lbl">Recording link <span className="lbl-opt">Google Drive · Vimeo · Loom · direct URL</span></label>
               <input
                 className="field"
-                placeholder="https://drive.google.com/file/d/…/view?usp=sharing"
+                placeholder="https://drive.google.com/file/d/… or https://vimeo.com/…"
                 value={f.source}
                 style={srcErr ? { borderColor: "var(--red)" } : null}
                 onChange={(e) => { set("source", e.target.value); setSrcErr(""); }}
               />
               {srcErr
                 ? <span className="field-hint" style={{ color: "var(--red)" }}>{srcErr}</span>
-                : <span className="field-hint">Paste the Google Drive share link for this recording.</span>
+                : <span className="field-hint">Paste the share link from Google Drive, Vimeo, Loom, or any direct audio/video URL.</span>
               }
               <div className="rec-instructions">
                 <p className="rec-inst-title">How to get the link from Readymode</p>
