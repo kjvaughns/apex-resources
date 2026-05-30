@@ -73,10 +73,22 @@ function RecordingForm({ editing, presenters, onAddPresenter, onSave, onCancel }
     ? { ...blankRec(), ...editing }
     : blankRec(presenters[0] ? presenters[0].id : ""));
   const [err, setErr] = useStateR(false);
+  const [srcErr, setSrcErr] = useStateR("");
   const [addingP, setAddingP] = useStateR(false);
   const [pName, setPName] = useStateR("");
   const [pRole, setPRole] = useStateR("");
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const validateSource = (url, status) => {
+    if (status !== "published") return "";
+    const s = url.trim();
+    if (!s) return "A recording link is required to publish. Follow the steps below to get one from Google Drive.";
+    if (s.includes("drive.google.com") && !/drive\.google\.com\/file\/d\/[a-zA-Z0-9_-]+/.test(s))
+      return "Invalid Google Drive link — copy the full share URL from the file (it should contain /file/d/…).";
+    if (!s.includes("drive.google.com"))
+      return "Only Google Drive links are supported. Follow the steps below to get the correct link.";
+    return "";
+  };
 
   const commitPresenter = () => {
     if (!pName.trim()) { setAddingP(false); return; }
@@ -86,7 +98,9 @@ function RecordingForm({ editing, presenters, onAddPresenter, onSave, onCancel }
   };
 
   const submit = (status) => {
-    if (!f.title.trim() || !f.presenterId) { setErr(true); return; }
+    const sErr = validateSource(f.source, status);
+    if (!f.title.trim() || !f.presenterId) { setErr(true); setSrcErr(sErr); return; }
+    if (sErr) { setSrcErr(sErr); return; }
     onSave({
       id: editing ? editing.id : "rec-" + Date.now().toString(36),
       presenterId: f.presenterId, title: f.title.trim(), topic: f.topic.trim() || "General",
@@ -154,9 +168,27 @@ function RecordingForm({ editing, presenters, onAddPresenter, onSave, onCancel }
             </div>
 
             <div className="fg fg-full">
-              <label className="lbl">Recording link <span className="lbl-opt">Google Drive / Vimeo / direct URL</span></label>
-              <input className="field" placeholder="https://drive.google.com/file/d/…/preview" value={f.source} onChange={(e) => set("source", e.target.value)} />
-              <span className="field-hint">This is the player source shown on the public site.</span>
+              <label className="lbl">Recording link <span className="lbl-opt">Google Drive share URL</span></label>
+              <input
+                className="field"
+                placeholder="https://drive.google.com/file/d/…/view?usp=sharing"
+                value={f.source}
+                style={srcErr ? { borderColor: "var(--red)" } : null}
+                onChange={(e) => { set("source", e.target.value); setSrcErr(""); }}
+              />
+              {srcErr
+                ? <span className="field-hint" style={{ color: "var(--red)" }}>{srcErr}</span>
+                : <span className="field-hint">Paste the Google Drive share link for this recording.</span>
+              }
+              <div className="rec-instructions">
+                <p className="rec-inst-title">How to get the link from Readymode</p>
+                <ol className="rec-inst-steps">
+                  <li><strong>Download the audio</strong> — In Readymode, open the call recording and click <strong>Download</strong> to save the audio file to your device.</li>
+                  <li><strong>Upload to Google Drive</strong> — Go to <a href="https://drive.google.com" target="_blank" rel="noreferrer">drive.google.com</a>, click <strong>+ New → File upload</strong>, and select the downloaded audio file.</li>
+                  <li><strong>Set sharing to public</strong> — Right-click the uploaded file → <strong>Share</strong> → click the access dropdown (shows <em>"Restricted"</em>) → select <strong>"Anyone with the link"</strong> → click <strong>Done</strong>.</li>
+                  <li><strong>Copy and paste the link</strong> — Click <strong>Copy link</strong>, then paste it in the field above.</li>
+                </ol>
+              </div>
             </div>
 
             <div className="fg fg-full">
