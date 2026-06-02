@@ -594,12 +594,20 @@ const HUB = [
     label: "Resource Library",
     desc: "Scripts, carrier guides, trainings, and PDFs — searchable and filterable by type.",
   },
+  {
+    route: "courses",
+    num: "03",
+    label: "Training Courses",
+    desc: "Structured courses with video lessons, quizzes, and completion certificates — learn at your own pace.",
+  },
 ];
 
-function HomeView() {
+function HomeView({ coursesData }) {
+  const courseCount = coursesData ? coursesData.courses.length : 0;
   const meta = {
     presentations: window.APEX_PRESENTERS.length + " presenters · " + window.APEX_RECORDINGS.length + " recordings",
     library: window.APEX_RESOURCES.length + " resources",
+    courses: courseCount + " course" + (courseCount !== 1 ? "s" : ""),
   };
   return (
     <main className="container">
@@ -702,6 +710,387 @@ function LibraryView({ t }) {
   );
 }
 
+// ── Public Course Platform ────────────────────────────────────────────────────
+
+function CoursesPage({ coursesData }) {
+  const { courses, lessonsByCourse } = coursesData;
+  if (!courses.length) return (
+    <main className="container">
+      <section className="page-head"><div className="page-head-text">
+        <p className="hero-kicker">Course Platform</p>
+        <h1 className="sec-title">No courses published yet.</h1>
+      </div></section>
+      <Footer />
+    </main>
+  );
+  return (
+    <main className="container">
+      <section className="page-head"><div className="page-head-text">
+        <p className="hero-kicker">Course Platform</p>
+        <h1 className="sec-title">Learn at your own pace.</h1>
+      </div></section>
+      <div className="crs-pub-grid">
+        {courses.map(c => {
+          const ls = lessonsByCourse[c.id] || [];
+          return (
+            <a key={c.id} className="crs-pub-card" href={"#courses/" + c.id}>
+              <div className="crs-pub-top">
+                {c.thumbnail_url
+                  ? <img src={c.thumbnail_url} alt="" className="crs-pub-thumb" />
+                  : <div className="crs-pub-thumb-ph">📚</div>}
+              </div>
+              <div className="crs-pub-body">
+                <p className="crs-pub-meta">{c.instructor_name || "APEX"} · {ls.length} lesson{ls.length !== 1 ? "s" : ""}</p>
+                <h3 className="crs-pub-title">{c.title}</h3>
+                {c.description && <p className="crs-pub-desc">{c.description}</p>}
+                <span className="crs-pub-go">Start course <span className="cta-arrow">→</span></span>
+              </div>
+            </a>
+          );
+        })}
+      </div>
+      <Footer />
+    </main>
+  );
+}
+
+function CourseLanding({ courseId, coursesData, learnerName, setLearnerName }) {
+  const { courses, lessonsByCourse, quizzesByLesson } = coursesData;
+  const course = courses.find(c => c.id === courseId);
+  const lessons = lessonsByCourse[courseId] || [];
+  const [nameInput, setNameInput] = useState(learnerName);
+  const [enrollment, setEnrollment] = useState(null);
+  const [progress, setProgress] = useState({});
+  const [enrolling, setEnrolling] = useState(false);
+
+  useEffect(() => {
+    if (!learnerName || !courseId) return;
+    fetch(`/api/enroll?courseId=${encodeURIComponent(courseId)}&learnerName=${encodeURIComponent(learnerName)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.enrollment) {
+          setEnrollment(d.enrollment);
+          return fetch(`/api/progress?enrollmentId=${d.enrollment.id}`).then(r => r.json());
+        }
+      })
+      .then(p => { if (p && p.ok) setProgress(p.progress || {}); })
+      .catch(() => {});
+  }, [learnerName, courseId]);
+
+  if (!course) return (
+    <main className="container">
+      <p style={{padding:"60px 0",color:"var(--muted)"}}>Course not found.</p>
+      <Footer />
+    </main>
+  );
+
+  const completedCount = Object.values(progress).filter(v => v?.completed).length;
+  const allDone = lessons.length > 0 && completedCount >= lessons.length;
+  const nextLesson = lessons.find(l => !progress[l.id]?.completed);
+
+  const enroll = async () => {
+    const name = nameInput.trim();
+    if (!name) return;
+    setEnrolling(true);
+    try {
+      try { sessionStorage.setItem("apex_learner_name", name); } catch {}
+      setLearnerName(name);
+      const r = await fetch("/api/enroll", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseId, learnerName: name }),
+      });
+      const d = await r.json();
+      if (d.enrollment) {
+        setEnrollment(d.enrollment);
+        const p = await fetch(`/api/progress?enrollmentId=${d.enrollment.id}`).then(r => r.json());
+        if (p.ok) setProgress(p.progress || {});
+      }
+    } catch {}
+    setEnrolling(false);
+  };
+
+  return (
+    <main className="container">
+      <div className="crs-landing-head">
+        {course.thumbnail_url && <img src={course.thumbnail_url} alt="" className="crs-landing-thumb" />}
+        <div className="crs-landing-info">
+          <p className="hero-kicker">Course</p>
+          <h1 className="crs-landing-title">{course.title}</h1>
+          {course.instructor_name && <p className="crs-landing-instructor">by {course.instructor_name}</p>}
+          {course.description && <p className="crs-landing-desc">{course.description}</p>}
+          <div className="crs-landing-stats">
+            <span>{lessons.length} lesson{lessons.length !== 1 ? "s" : ""}</span>
+            {enrollment && <><span className="crs-stat-dot">·</span><span>{completedCount} completed</span></>}
+          </div>
+        </div>
+      </div>
+
+      {!enrollment ? (
+        <div className="crs-enroll-box">
+          <h2 className="crs-enroll-title">Start this course</h2>
+          <p className="crs-enroll-sub">Enter your name to track your progress and earn a certificate of completion.</p>
+          <div className="crs-enroll-row">
+            <input className="crs-enroll-input" placeholder="Your full name" value={nameInput}
+              autoFocus onChange={e => setNameInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && enroll()} />
+            <button className="crs-enroll-btn" onClick={enroll} disabled={!nameInput.trim() || enrolling}>
+              {enrolling ? "Starting…" : "Start course"}<span className="cta-arrow">→</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="crs-progress-section">
+          <div className="crs-progress-bar-wrap">
+            <div className="crs-progress-bar">
+              <div className="crs-progress-fill" style={{ width: (lessons.length ? (completedCount / lessons.length) * 100 : 0) + "%" }} />
+            </div>
+            <span className="crs-progress-label">{completedCount} / {lessons.length} completed</span>
+          </div>
+          {allDone ? (
+            <div className="crs-all-done">
+              <span>🎉 Course complete!</span>
+              <a className="action-btn" href={`#courses/${courseId}/certificate`}>View Certificate<span className="cta-arrow">→</span></a>
+            </div>
+          ) : nextLesson ? (
+            <a className="crs-continue-btn" href={`#courses/${courseId}/${nextLesson.id}`}>
+              {completedCount === 0 ? "Start first lesson" : "Continue"}: {nextLesson.title}<span className="cta-arrow">→</span>
+            </a>
+          ) : null}
+        </div>
+      )}
+
+      <div className="crs-lesson-pub-list">
+        {lessons.map((l, i) => {
+          const done = progress[l.id]?.completed;
+          const quizCount = (quizzesByLesson[l.id] || []).length;
+          return (
+            <a key={l.id}
+              href={enrollment ? `#courses/${courseId}/${l.id}` : undefined}
+              className={"crs-lesson-pub-row" + (done ? " done" : "") + (!enrollment ? " locked" : "")}
+              onClick={!enrollment ? e => e.preventDefault() : undefined}>
+              <span className={"crs-lpub-num" + (done ? " done" : "")}>{done ? "✓" : i + 1}</span>
+              <div className="crs-lpub-body">
+                <div className="crs-lpub-title">{l.title}</div>
+                <div className="crs-lpub-meta">
+                  {l.media_type === "audio" ? "♪ Audio" : "▶ Video"}
+                  {l.duration_seconds ? ` · ${Math.floor(l.duration_seconds / 60)}m` : ""}
+                  {quizCount > 0 ? ` · ${quizCount} question${quizCount !== 1 ? "s" : ""}` : ""}
+                </div>
+              </div>
+              {enrollment && <span className="crs-lpub-go">{done ? "Replay" : "Watch"} →</span>}
+            </a>
+          );
+        })}
+      </div>
+      <Footer />
+    </main>
+  );
+}
+
+function CoursePlayer({ courseId, lessonId, coursesData, learnerName }) {
+  const { courses, lessonsByCourse, quizzesByLesson } = coursesData;
+  const course = courses.find(c => c.id === courseId);
+  const lessons = lessonsByCourse[courseId] || [];
+  const lesson = lessons.find(l => l.id === lessonId);
+  const quizzes = quizzesByLesson[lessonId] || [];
+  const [enrollment, setEnrollment] = useState(null);
+  const [progress, setProgress] = useState({});
+  const [tsExpanded, setTsExpanded] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [showCert, setShowCert] = useState(false);
+
+  useEffect(() => {
+    if (!learnerName || !courseId) { window.location.hash = "#courses/" + courseId; return; }
+    setCompleted(false); setSubmitted(false); setAnswers({}); setTsExpanded(false);
+    fetch(`/api/enroll?courseId=${encodeURIComponent(courseId)}&learnerName=${encodeURIComponent(learnerName)}`)
+      .then(r => r.json())
+      .then(async d => {
+        if (!d.enrollment) { window.location.hash = "#courses/" + courseId; return; }
+        setEnrollment(d.enrollment);
+        const [prog, qr] = await Promise.all([
+          fetch(`/api/progress?enrollmentId=${d.enrollment.id}`).then(r => r.json()),
+          quizzes.length ? fetch(`/api/quiz-response?enrollmentId=${d.enrollment.id}`).then(r => r.json()) : { ok: false },
+        ]);
+        if (prog.ok) { const p = prog.progress || {}; setProgress(p); setCompleted(!!p[lessonId]?.completed); }
+        if (qr.ok && qr.responses?.length) {
+          const ans = {}; qr.responses.forEach(r => { ans[r.quiz_id] = r.selected_answer; }); setAnswers(ans);
+          if (qr.responses.some(r => r.quiz_id === quizzes[0]?.id)) setSubmitted(true);
+        }
+      })
+      .catch(() => {});
+  }, [learnerName, courseId, lessonId]);
+
+  if (!lesson) return <main className="container"><p style={{padding:"60px 0",color:"var(--muted)"}}>Lesson not found.</p><Footer /></main>;
+
+  const lessonIdx = lessons.findIndex(l => l.id === lessonId);
+  const prevLesson = lessonIdx > 0 ? lessons[lessonIdx - 1] : null;
+  const nextLesson = lessons[lessonIdx + 1];
+
+  const score = quizzes.length ? Math.round(quizzes.filter(q => answers[q.id] === q.correct_answer).length / quizzes.length * 100) : 100;
+
+  const submitQuiz = async () => {
+    if (!enrollment || submitting) return;
+    setSubmitting(true);
+    for (const q of quizzes) {
+      if (!answers[q.id]) continue;
+      await fetch("/api/quiz-response", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enrollmentId: enrollment.id, quizId: q.id, selectedAnswer: answers[q.id], correctAnswer: q.correct_answer }),
+      }).catch(() => {});
+    }
+    setSubmitted(true);
+    setSubmitting(false);
+  };
+
+  const markComplete = async () => {
+    if (!enrollment || completing || completed) return;
+    setCompleting(true);
+    try {
+      await fetch("/api/progress", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enrollmentId: enrollment.id, lessonId }),
+      });
+      const newProg = { ...progress, [lessonId]: { completed: true, completed_at: new Date().toISOString() } };
+      setProgress(newProg);
+      setCompleted(true);
+      if (lessons.every(l => newProg[l.id]?.completed)) {
+        await fetch("/api/enroll", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: enrollment.id, completed_at: new Date().toISOString(), final_score: score }),
+        }).catch(() => {});
+        setShowCert(true);
+      }
+    } catch {}
+    setCompleting(false);
+  };
+
+  if (showCert) return <CourseCertificate courseId={courseId} coursesData={coursesData} learnerName={learnerName} />;
+
+  return (
+    <main className="container">
+      <div className="crs-player-nav">
+        <a href={"#courses/" + courseId} className="crs-player-back">← {course?.title}</a>
+        <span className="crs-player-pos">{lessonIdx + 1} / {lessons.length}</span>
+      </div>
+      <h1 className="crs-player-title">{lesson.title}</h1>
+
+      {lesson.media_url && (
+        <div className="crs-player-media">
+          <iframe src={toEmbedUrl(lesson.media_url)} title={lesson.title}
+            allow="autoplay; fullscreen" allowFullScreen className="crs-player-frame" />
+        </div>
+      )}
+
+      {lesson.transcript && (
+        <div className="crs-ts-box">
+          <button className="crs-ts-toggle" onClick={() => setTsExpanded(p => !p)}>
+            <span>{tsExpanded ? "▾" : "▸"} Transcript</span>
+            <span className="crs-ts-hint">{tsExpanded ? "Collapse" : "Expand"}</span>
+          </button>
+          {tsExpanded && <div className="crs-ts-body">{lesson.transcript}</div>}
+        </div>
+      )}
+
+      {quizzes.length > 0 && (
+        <div className="crs-quiz-pub-wrap">
+          <h2 className="crs-quiz-pub-head">Knowledge Check</h2>
+          <p className="crs-quiz-pub-sub">{quizzes.length} question{quizzes.length !== 1 ? "s" : ""}</p>
+          {quizzes.map((q, qi) => {
+            const sel = answers[q.id];
+            return (
+              <div key={q.id} className="crs-qpub-card">
+                <p className="crs-qpub-question">{qi + 1}. {q.question}</p>
+                <div className="crs-qpub-opts">
+                  {["a","b","c","d"].map(opt => {
+                    if (!q[`option_${opt}`]) return null;
+                    const isSel = sel === opt, isCorrect = submitted && opt === q.correct_answer, isWrong = submitted && isSel && !isCorrect;
+                    return (
+                      <button key={opt}
+                        className={"crs-qpub-opt" + (isSel && !submitted ? " sel" : "") + (isCorrect ? " correct" : "") + (isWrong ? " wrong" : "")}
+                        disabled={submitted}
+                        onClick={() => !submitted && setAnswers(p => ({ ...p, [q.id]: opt }))}>
+                        <span className="crs-qpub-letter">{opt.toUpperCase()}</span>
+                        {q[`option_${opt}`]}
+                      </button>
+                    );
+                  })}
+                </div>
+                {submitted && sel && (
+                  <p className={"crs-qpub-fb" + (sel === q.correct_answer ? " correct" : " wrong")}>
+                    {sel === q.correct_answer ? "✓ Correct!" : `✗ Correct: ${q[`option_${q.correct_answer}`]}`}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          {!submitted ? (
+            <button className="crs-quiz-submit" onClick={submitQuiz}
+              disabled={submitting || Object.keys(answers).length < quizzes.length}>
+              {submitting ? "Saving…" : "Submit answers"}<span className="cta-arrow">→</span>
+            </button>
+          ) : (
+            <div className="crs-quiz-score">
+              Score: {quizzes.filter(q => answers[q.id] === q.correct_answer).length}/{quizzes.length} correct ({score}%)
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="crs-player-foot">
+        {!completed ? (
+          <button className="crs-mark-btn" onClick={markComplete}
+            disabled={completing || !enrollment || (quizzes.length > 0 && !submitted)}>
+            {completing ? "Saving…" : "Mark as complete ✓"}
+          </button>
+        ) : (
+          <div className="crs-done-row">
+            <span className="crs-done-check">✓ Lesson complete!</span>
+            {nextLesson
+              ? <a href={`#courses/${courseId}/${nextLesson.id}`} className="action-btn">Next: {nextLesson.title}<span className="cta-arrow">→</span></a>
+              : <a href={`#courses/${courseId}`} className="action-btn">View course summary<span className="cta-arrow">→</span></a>}
+          </div>
+        )}
+        <div className="crs-prev-next">
+          {prevLesson && <a href={`#courses/${courseId}/${prevLesson.id}`} className="crs-prev-link">← Previous</a>}
+          {nextLesson && <a href={`#courses/${courseId}/${nextLesson.id}`} className="crs-next-link">Next →</a>}
+        </div>
+      </div>
+      <Footer />
+    </main>
+  );
+}
+
+function CourseCertificate({ courseId, coursesData, learnerName }) {
+  const course = coursesData.courses.find(c => c.id === courseId);
+  const dateStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  return (
+    <main className="container">
+      <div className="cert-wrap">
+        <div className="cert-card">
+          <img src="assets/apex-logo-trans.png" alt="APEX Financial Empire" className="cert-logo" />
+          <p className="cert-kicker">Certificate of Completion</p>
+          <p className="cert-name">{learnerName || "Agent"}</p>
+          <p className="cert-sub">has successfully completed</p>
+          <h2 className="cert-course">{course?.title}</h2>
+          <p className="cert-date">{dateStr}</p>
+          <p className="cert-org">APEX Financial Empire</p>
+          <button className="cert-print-btn" onClick={() => window.print()}>Print Certificate</button>
+        </div>
+      </div>
+      <div style={{textAlign:"center",marginTop:24}}>
+        <a href={"#courses/" + courseId} style={{color:"var(--gold)",fontSize:14,fontWeight:600}}>← Back to course</a>
+        <span style={{color:"var(--muted)",margin:"0 10px"}}>·</span>
+        <a href="#courses" style={{color:"var(--muted)",fontSize:14,fontWeight:600}}>All courses</a>
+      </div>
+      <Footer />
+    </main>
+  );
+}
+
 function useRoute() {
   const get = () => ((window.location.hash || "").replace("#", "") || "home");
   const [route, setRoute] = useState(get);
@@ -720,6 +1109,10 @@ function App() {
   const [t, setTweak] = useTweaks(APEX_DEFAULTS);
   const route = useRoute();
   const [, setApiRev] = useState(0);
+  const [coursesData, setCoursesData] = useState({ courses: [], lessonsByCourse: {}, quizzesByLesson: {} });
+  const [learnerName, setLearnerName] = useState(() => {
+    try { return sessionStorage.getItem("apex_learner_name") || ""; } catch { return ""; }
+  });
 
   useAutoTranscribe(authed);
 
@@ -735,6 +1128,10 @@ function App() {
           if (d.quickLinks) window.APEX_QUICKLINKS = d.quickLinks;
           setApiRev((n) => n + 1);
         })
+        .catch(() => {});
+      fetch("/api/courses-public?t=" + Date.now())
+        .then((r) => r.json())
+        .then((d) => { if (d.courses) setCoursesData(d); })
         .catch(() => {});
     };
     load();
@@ -753,12 +1150,26 @@ function App() {
     );
   }
 
-  const valid = ["presentations", "library"].includes(route) ? route : "home";
+  const parts = (route || "home").split("/");
+  const baseRoute = parts[0];
+  const routeCourseId = parts[1];
+  const routeLessonId = parts[2];
+  const isCoursesPage = baseRoute === "courses" && !routeCourseId;
+  const isCourseLanding = baseRoute === "courses" && !!routeCourseId && !routeLessonId;
+  const isCourseLesson = baseRoute === "courses" && !!routeCourseId && !!routeLessonId && routeLessonId !== "certificate";
+  const isCourseCert = baseRoute === "courses" && !!routeCourseId && routeLessonId === "certificate";
+  const viewRoute = ["presentations", "library"].includes(baseRoute) ? baseRoute : baseRoute === "courses" ? "courses" : "home";
 
   return (
     <div className="page" data-density={t.density} data-cardstyle={t.cardStyle} style={rootStyle}>
-      <TopBar route={valid} />
-      {valid === "presentations" ? <PresentationsView /> : valid === "library" ? <LibraryView t={t} /> : <HomeView />}
+      <TopBar route={viewRoute} />
+      {viewRoute === "presentations" ? <PresentationsView />
+      : viewRoute === "library" ? <LibraryView t={t} />
+      : isCoursesPage ? <CoursesPage coursesData={coursesData} />
+      : isCourseLanding ? <CourseLanding courseId={routeCourseId} coursesData={coursesData} learnerName={learnerName} setLearnerName={setLearnerName} />
+      : isCourseLesson ? <CoursePlayer courseId={routeCourseId} lessonId={routeLessonId} coursesData={coursesData} learnerName={learnerName} />
+      : isCourseCert ? <CourseCertificate courseId={routeCourseId} coursesData={coursesData} learnerName={learnerName} />
+      : <HomeView coursesData={coursesData} />}
 
       <TweaksPanel>
         <TweakSection label="Brand" />

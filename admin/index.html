@@ -507,6 +507,75 @@
     .content { padding: 22px 16px; }
     .topbar { padding: 0 16px; }
   }
+  /* ---------- COURSES ---------- */
+  .tbl-toolbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .tbl-head-title { margin: 0; font-family: var(--head); font-size: 28px; letter-spacing: 0.02em; }
+  .tbl-head-sub { margin: 4px 0 0; font-size: 13px; color: var(--muted-2); }
+
+  .crs-list { display: flex; flex-direction: column; gap: 12px; }
+  .crs-row {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px 20px; transition: border-color .16s;
+  }
+  .crs-row:hover { border-color: rgba(255,255,255,0.18); }
+  .crs-row-thumb {
+    width: 68px; height: 44px; flex: none; border-radius: 8px; overflow: hidden;
+    background: var(--surface-2); border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .crs-row-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .crs-thumb-ph { font-size: 20px; }
+  .crs-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .crs-row-title { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .crs-row-meta { font-size: 12px; color: var(--muted-2); }
+
+  .crs-lesson-list { display: flex; flex-direction: column; gap: 8px; }
+  .crs-lesson-row {
+    display: flex; align-items: center; gap: 14px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 18px; cursor: grab; user-select: none;
+    transition: border-color .14s, background .14s;
+  }
+  .crs-lesson-row:hover { border-color: rgba(255,255,255,0.18); background: var(--surface-2); }
+  .crs-lesson-row.drag-over { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 5%, var(--surface)); }
+  .crs-lesson-num {
+    flex: none; width: 28px; height: 28px; border-radius: 8px;
+    background: var(--surface-2); border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: var(--muted);
+  }
+  .crs-lesson-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .crs-lesson-title { font-size: 14.5px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .crs-lesson-meta { font-size: 12px; color: var(--muted-2); }
+
+  .crs-upload-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+
+  .crs-quiz-list { display: flex; flex-direction: column; gap: 20px; }
+  .crs-quiz-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 24px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .crs-quiz-head { display: flex; align-items: center; justify-content: space-between; }
+  .crs-quiz-num { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
+  .crs-quiz-options { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+  .crs-quiz-opt {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--surface-2); transition: border-color .14s;
+  }
+  .crs-quiz-opt-correct { border-color: var(--green); background: color-mix(in srgb, var(--green) 8%, transparent); }
+  .crs-quiz-opt-mark {
+    flex: none; width: 28px; height: 28px; border-radius: 7px;
+    background: var(--surface-3); border: 1px solid var(--line);
+    font-size: 12.5px; font-weight: 700; color: var(--muted);
+    display: flex; align-items: center; justify-content: center; transition: .14s;
+  }
+  .crs-quiz-opt-correct .crs-quiz-opt-mark { background: var(--green); color: #fff; border-color: var(--green); }
+
   @media (max-width: 600px) {
     .hamburger-btn { display: flex; }
 
@@ -559,6 +628,7 @@
   <script type="text/babel" src="tweaks-panel.jsx"></script>
   <script type="text/babel" src="admin-icons.jsx?v=3"></script>
   <script type="text/babel" src="admin-recordings.jsx?v=3"></script>
+  <script type="text/babel" src="admin-courses.jsx"></script>
   <script type="text/babel" src="admin.jsx?v=3"></script>
 </body>
 </html>

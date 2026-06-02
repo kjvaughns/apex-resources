@@ -109,6 +109,8 @@ const NAV = [
   { key: "add", label: "Add Resource", icon: "plus" },
   { sect: "Site Settings" },
   { key: "quicklinks", label: "Quick Links", icon: "link" },
+  { sect: "Courses" },
+  { key: "courses", label: "Courses", icon: "list" },
 ];
 function Sidebar({ route, onNav, onLogout, count, drawerOpen, onCloseDrawer }) {
   return (
@@ -699,6 +701,11 @@ const TITLES = {
   manage: { crumb: "Resource Library", h: "Manage Resources" },
   recordings: { crumb: "Recorded Presentations", h: "Recordings" },
   quicklinks: { crumb: "Site Settings", h: "Quick Links" },
+  courses: { crumb: "Course Platform", h: "Courses" },
+  "course-form": { crumb: "Course Platform", h: "Course" },
+  "course-detail": { crumb: "Course Platform", h: "Lessons" },
+  "lesson-form": { crumb: "Course Platform", h: "Lesson" },
+  "quiz-editor": { crumb: "Course Platform", h: "Quiz" },
 };
 
 function App() {
@@ -723,6 +730,14 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const [courses, setCourses] = useState([]);
+  const [lessonsByCourse, setLessonsByCourse] = useState({});
+  const [quizzesByLesson, setQuizzesByLesson] = useState({});
+  const [editingCourse, setEditingCourse] = useState(null);
+  const [courseDetailTarget, setCourseDetailTarget] = useState(null);
+  const [editingLesson, setEditingLesson] = useState(null);
+  const [lessonContext, setLessonContext] = useState(null);
+  const [quizContext, setQuizContext] = useState(null);
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -827,6 +842,26 @@ function App() {
       .catch(() => toast("Failed to load data — check DB config", true));
   }, [authed]);
 
+  useEffect(() => {
+    if (!authed) return;
+    const p = pw();
+    if (!p) return;
+    fetch("/api/admin/courses-load", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: p }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          setCourses(d.courses || []);
+          setLessonsByCourse(d.lessonsByCourse || {});
+          setQuizzesByLesson(d.quizzesByLesson || {});
+        }
+      })
+      .catch(() => {});
+  }, [authed]);
+
   const nav = (key, filter) => { setRoute(key); setPresetFilter(filter || null); window.scrollTo(0, 0); };
   const openAdd = (item, type) => {
     if (item) { setEditing(item); setRoute("edit"); }
@@ -891,10 +926,15 @@ function App() {
 
   if (!authed) return <div style={rootStyle}><Gate onUnlock={() => setAuthed(true)} /></div>;
 
-  const onForm = route === "add" || route === "edit" || route === "recording-form";
-  const sideRoute = ({ edit: "manage", add: "add", "recording-form": "recordings" }[route]) || route;
+  const onForm = route === "add" || route === "edit" || route === "recording-form"
+    || route === "course-form" || route === "lesson-form" || route === "quiz-editor";
+  const sideRoute = ({
+    edit: "manage", add: "add", "recording-form": "recordings",
+    "course-form": "courses", "course-detail": "courses", "lesson-form": "courses", "quiz-editor": "courses",
+  }[route]) || route;
   let meta = TITLES[route] || TITLES.dashboard;
   if (route === "recording-form") meta = { crumb: "Recorded Presentations", h: editing ? "Edit Recording" : "Add Recording" };
+  if (route === "course-detail" && courseDetailTarget) meta = { crumb: "Course Platform", h: courseDetailTarget.title };
 
   return (
     <div className="shell" style={rootStyle}>
@@ -909,9 +949,13 @@ function App() {
             <span className="topbar-h">{meta.h}</span>
           </div>
           <div className="topbar-actions">
-            {!onForm && route !== "quicklinks" && (route === "recordings"
-              ? <button className="btn btn-gold" onClick={() => openRec(null)}><I.plus />New Recording</button>
-              : <button className="btn btn-gold" onClick={() => openAdd(null)}><I.plus />New Resource</button>)}
+            {!onForm && route !== "quicklinks" && route !== "course-detail" && (
+              route === "recordings"
+                ? <button className="btn btn-gold" onClick={() => openRec(null)}><I.plus />New Recording</button>
+                : route === "courses"
+                ? <button className="btn btn-gold" onClick={() => { setEditingCourse(null); nav("course-form"); }}><I.plus />New Course</button>
+                : <button className="btn btn-gold" onClick={() => openAdd(null)}><I.plus />New Resource</button>
+            )}
           </div>
         </header>
 
@@ -939,6 +983,75 @@ function App() {
         )}
         {route === "quicklinks" && (
           <QuickLinksView links={quickLinks} onSave={updateQuickLinks} />
+        )}
+        {route === "courses" && (
+          <CoursesView
+            courses={courses}
+            lessonsByCourse={lessonsByCourse}
+            onNew={() => { setEditingCourse(null); nav("course-form"); }}
+            onEdit={(c) => { setEditingCourse(c); nav("course-form"); }}
+            onManage={(c) => { setCourseDetailTarget(c); nav("course-detail"); }}
+            onDelete={async (c) => {
+              const updated = courses.filter(x => x.id !== c.id);
+              setCourses(updated);
+              await apiSave("apex:courses", updated);
+              toast("Course deleted");
+            }}
+          />
+        )}
+        {route === "course-form" && (
+          <CourseForm
+            key={editingCourse ? editingCourse.id : "new-course"}
+            editing={editingCourse}
+            courses={courses}
+            setCourses={setCourses}
+            onBack={() => nav("courses")}
+            onManage={(c) => { setCourseDetailTarget(c); nav("course-detail"); }}
+            toast={toast}
+          />
+        )}
+        {route === "course-detail" && courseDetailTarget && (
+          <CourseDetail
+            key={courseDetailTarget.id}
+            course={courseDetailTarget}
+            lessons={lessonsByCourse[courseDetailTarget.id] || []}
+            quizzesByLesson={quizzesByLesson}
+            setCourses={setCourses}
+            courses={courses}
+            setLessonsByCourse={setLessonsByCourse}
+            onBack={() => nav("courses")}
+            onEditLesson={(lesson, lessons, saveLessons) => {
+              setEditingLesson(lesson);
+              setLessonContext({ lessons, saveLessons });
+              nav("lesson-form");
+            }}
+            onEditQuiz={(lesson, initialQuizzes) => {
+              setQuizContext({ lesson, initialQuizzes });
+              nav("quiz-editor");
+            }}
+            toast={toast}
+          />
+        )}
+        {route === "lesson-form" && editingLesson && lessonContext && (
+          <LessonForm
+            key={editingLesson.id}
+            lesson={editingLesson}
+            course={courseDetailTarget}
+            lessons={lessonContext.lessons}
+            saveLessons={lessonContext.saveLessons}
+            onBack={() => nav("course-detail")}
+            toast={toast}
+          />
+        )}
+        {route === "quiz-editor" && quizContext && (
+          <QuizEditor
+            key={quizContext.lesson.id}
+            lesson={quizContext.lesson}
+            initialQuizzes={quizContext.initialQuizzes}
+            setQBL={(updater) => setQuizzesByLesson(updater)}
+            onBack={() => nav("course-detail")}
+            toast={toast}
+          />
         )}
       </div>
 
