@@ -109,8 +109,6 @@ const NAV = [
   { key: "add", label: "Add Resource", icon: "plus" },
   { sect: "Site Settings" },
   { key: "quicklinks", label: "Quick Links", icon: "link" },
-  { sect: "Courses" },
-  { key: "courses", label: "Courses", icon: "list" },
 ];
 function Sidebar({ route, onNav, onLogout, count, drawerOpen, onCloseDrawer }) {
   return (
@@ -146,13 +144,15 @@ function Sidebar({ route, onNav, onLogout, count, drawerOpen, onCloseDrawer }) {
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────────────────────────
-function Dashboard({ resources, recordings, presenters, onNav, onAdd, onAddRec, onEditRec }) {
+function Dashboard({ resources, recordings, presenters, courses, onNav, onAdd, onAddRec, onEditRec }) {
   const counts = useMemo(() => {
     const c = {}; for (const t of TYPE_ORDER) c[t] = 0;
     for (const r of resources) c[r.type] = (c[r.type] || 0) + 1;
     return c;
   }, [resources]);
   const pById = useMemo(() => Object.fromEntries(presenters.map((p) => [p.id, p])), [presenters]);
+  const courseCount = (courses || []).length;
+  const coursePub = (courses || []).filter(c => c.is_published).length;
 
   const recent = useMemo(() => {
     const res = resources.map((r) => ({ ...r, kind: "resource", color: TYPE_META[r.type].color }));
@@ -171,6 +171,11 @@ function Dashboard({ resources, recordings, presenters, onNav, onAdd, onAddRec, 
           <div className="stat-top"><span className="stat-ico"><I.video /></span><span className="stat-label">Recordings</span></div>
           <span className="stat-num">{recCount}</span>
           <span className="stat-sub">{recPub} published · {recCount - recPub} draft</span>
+        </button>
+        <button className="stat" style={{ "--ac": "#46A758" }} onClick={() => onNav("courses")}>
+          <div className="stat-top"><span className="stat-ico"><I.list /></span><span className="stat-label">Courses</span></div>
+          <span className="stat-num">{courseCount}</span>
+          <span className="stat-sub">{coursePub} published · {courseCount - coursePub} draft</span>
         </button>
         {STAT_TYPES.map((t) => {
           const m = TYPE_META[t];
@@ -232,6 +237,11 @@ function Dashboard({ resources, recordings, presenters, onNav, onAdd, onAddRec, 
                 </button>
               );
             })}
+            <button className="qa" style={{ "--ac": "#46A758" }} onClick={() => onNav("courses")}>
+              <span className="qa-ico"><I.list /></span>
+              <span className="qa-text"><span className="qa-title">Manage Courses</span><span className="qa-sub">Lessons, quizzes &amp; progress</span></span>
+              <span className="qa-plus">→</span>
+            </button>
           </div>
         </div>
       </div>
@@ -961,6 +971,7 @@ function App() {
 
         {route === "dashboard" && (
           <Dashboard resources={resources} recordings={recordings} presenters={presenters}
+            courses={courses}
             onNav={nav} onAdd={openAdd} onAddRec={openRec} onEditRec={openRec} />
         )}
         {(route === "add" || route === "edit") && (
