@@ -9,6 +9,7 @@ function fmtDate(iso) {
 }
 
 const TYPE_CTA = {
+  course: { meta: "Course", cta: "Start Course" },
   pdf: { meta: "PDF", cta: "Open PDF" },
   training: { meta: "Training", cta: "Watch training" },
   guide: { meta: "Script · Google Doc", cta: "Open script" },
@@ -32,7 +33,7 @@ function toPublicRec(r) {
 
 function toPublicRes(r) {
   const m = TYPE_CTA[r.type] || { meta: r.type, cta: "Open" };
-  return {
+  const out = {
     id: r.id,
     type: r.type,
     title: r.title,
@@ -47,6 +48,8 @@ function toPublicRes(r) {
     featured: !!r.featured,
     isNew: !!r.isNew,
   };
+  if (r.type === "course" && r.course) out.course = r.course;
+  return out;
 }
 
 module.exports = async (req, res) => {

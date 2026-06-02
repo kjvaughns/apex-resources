@@ -3,14 +3,18 @@ const { useState, useMemo, useEffect, useRef, useCallback } = React;
 const I = window.Icons;
 
 const TYPE_META = {
+  course:   { label: "Course",   color: "#C9A84C", icon: "course",   plural: "Courses" },
   video:    { label: "Video",    color: "#E5484D", icon: "video",    plural: "Videos" },
   pdf:      { label: "PDF",      color: "#4C7DF0", icon: "pdf",      plural: "PDFs" },
   training: { label: "Training", color: "#C9A84C", icon: "training", plural: "Trainings" },
   guide:    { label: "Guide",    color: "#46A758", icon: "guide",    plural: "Guides" },
   tool:     { label: "Tool",     color: "#9A6BE0", icon: "tool",     plural: "Tools" },
 };
-const TYPE_ORDER = ["pdf", "training", "guide", "tool", "video"];
-const STAT_TYPES = ["pdf", "training", "guide"];
+const TYPE_ORDER = ["course", "pdf", "training", "guide", "tool", "video"];
+const STAT_TYPES = ["course", "pdf", "training", "guide"];
+const COURSE_LEVELS = ["Core Curriculum", "Onboarding", "Intermediate", "Advanced"];
+const QUIZ_KEYS = ["A", "B", "C", "D", "E", "F"];
+const PASS_MARKS = [0.5, 0.6, 0.67, 0.7, 0.75, 0.8, 0.9];
 
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function fmtDate(iso) {
@@ -227,7 +231,7 @@ function Dashboard({ resources, recordings, presenters, courses, onNav, onAdd, o
               <span className="qa-text"><span className="qa-title">Add Recording</span><span className="qa-sub">New recorded presentation</span></span>
               <span className="qa-plus">+</span>
             </button>
-            {["pdf", "training", "guide"].map((t) => {
+            {["course", "pdf", "training", "guide"].map((t) => {
               const m = TYPE_META[t];
               return (
                 <button key={t} className="qa" style={{ "--ac": m.color }} onClick={() => onAdd(null, t)}>
@@ -253,16 +257,32 @@ function Dashboard({ resources, recordings, presenters, courses, onNav, onAdd, o
 function blankForm(type) {
   return { title: "", type: type || "pdf", desc: "", sourceMode: "link", link: "", fileName: "", fileObj: null,
     thumbMode: "url", thumb: "", thumbFile: "", tags: [], duration: "", featured: false, isNew: false,
-    date: todayISO(), status: "published" };
+    date: todayISO(), status: "published",
+    instructor: "", instructorRole: "", level: "Core Curriculum", curriculum: [] };
 }
 const isLocalPath = (l) => l && (l.startsWith("assets/") || l.startsWith("uploads/"));
 function fromItem(item) {
+  const co = item.course || {};
   return { ...blankForm(item.type), title: item.title, type: item.type, desc: item.desc || "",
     sourceMode: isLocalPath(item.link) ? "upload" : "link",
     link: isLocalPath(item.link) ? "" : (item.link || ""),
     fileName: isLocalPath(item.link) ? item.link.split("/").pop() : "",
     thumb: item.thumb || "", tags: item.tags || [], duration: item.duration || "",
-    featured: !!item.featured, isNew: !!item.isNew, date: item.date || todayISO(), status: item.status || "published" };
+    featured: !!item.featured, isNew: !!item.isNew, date: item.date || todayISO(), status: item.status || "published",
+    instructor: co.instructor || "", instructorRole: co.instructorRole || "", level: co.level || "Core Curriculum",
+    curriculum: co.curriculum ? co.curriculum.map((c) => ({ ...c, questions: c.questions ? c.questions.map((q) => ({ ...q, options: [...q.options] })) : undefined })) : [] };
+}
+
+function curriculumDuration(curr) {
+  let sec = 0;
+  for (const c of curr) {
+    if (c.kind !== "lesson" || !c.duration) continue;
+    const p = String(c.duration).split(":").map(Number);
+    sec += p.length === 2 ? p[0] * 60 + p[1] : (Number(c.duration) || 0);
+  }
+  if (!sec) return "";
+  const m = Math.round(sec / 60);
+  return m < 60 ? m + "m" : Math.floor(m / 60) + "h" + (m % 60 ? " " + (m % 60) + "m" : "");
 }
 
 function ResourceForm({ editing, presetType, onSave, onCancel }) {
@@ -271,7 +291,25 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
   const [err, setErr] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
+  const [openStep, setOpenStep] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const blankLesson = () => ({ kind: "lesson", title: "", media: "video", duration: "", link: "", blurb: "" });
+  const blankQuiz = () => ({ kind: "quiz", title: "", pass: 0.7, questions: [{ q: "", options: ["", ""], answer: 0 }] });
+  const addCurr = (kind) => setF((p) => { const arr = [...p.curriculum, kind === "quiz" ? blankQuiz() : blankLesson()]; setOpenStep(arr.length - 1); return { ...p, curriculum: arr }; });
+  const setCurr = (i, patch) => setF((p) => ({ ...p, curriculum: p.curriculum.map((c, j) => j === i ? { ...c, ...patch } : c) }));
+  const delCurr = (i) => { setF((p) => ({ ...p, curriculum: p.curriculum.filter((_, j) => j !== i) })); setOpenStep(null); };
+  const moveCurr = (from, to) => setF((p) => { if (to < 0 || to >= p.curriculum.length || from === to) return p; const a = [...p.curriculum]; const [m] = a.splice(from, 1); a.splice(to, 0, m); return { ...p, curriculum: a }; });
+  const qOp = (i, fn) => setF((p) => ({ ...p, curriculum: p.curriculum.map((c, j) => j === i ? { ...c, questions: fn(c.questions || []) } : c) }));
+  const addQ = (i) => qOp(i, (qs) => [...qs, { q: "", options: ["", ""], answer: 0 }]);
+  const setQ = (i, qi, patch) => qOp(i, (qs) => qs.map((q, k) => k === qi ? { ...q, ...patch } : q));
+  const delQ = (i, qi) => qOp(i, (qs) => qs.filter((_, k) => k !== qi));
+  const addOpt = (i, qi) => qOp(i, (qs) => qs.map((q, k) => k === qi ? { ...q, options: [...q.options, ""] } : q));
+  const setOpt = (i, qi, oi, val) => qOp(i, (qs) => qs.map((q, k) => k === qi ? { ...q, options: q.options.map((o, m) => m === oi ? val : o) } : q));
+  const delOpt = (i, qi, oi) => qOp(i, (qs) => qs.map((q, k) => k === qi ? { ...q, options: q.options.filter((_, m) => m !== oi), answer: q.answer > oi ? q.answer - 1 : (q.answer === oi ? 0 : q.answer) } : q));
+  const setAnswer = (i, qi, oi) => qOp(i, (qs) => qs.map((q, k) => k === qi ? { ...q, answer: oi } : q));
 
   const addTag = (raw) => {
     const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
@@ -313,11 +351,14 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
       link = f.sourceMode === "upload" ? (editing?.link || "#") : (f.link || "#");
     }
 
+    const isCourse = f.type === "course";
     onSave({
       id: editing ? editing.id : "r-" + Date.now().toString(36),
       type: f.type, title: f.title.trim(), desc: f.desc.trim(), date: f.date,
-      status, featured: f.featured, isNew: f.isNew, tags, duration: f.duration.trim(),
-      link, thumb: f.thumbMode === "url" ? f.thumb.trim() : f.thumbFile,
+      status, featured: f.featured, isNew: f.isNew, tags,
+      duration: isCourse ? curriculumDuration(f.curriculum) : f.duration.trim(),
+      link: isCourse ? "#" : link, thumb: f.thumbMode === "url" ? f.thumb.trim() : f.thumbFile,
+      ...(isCourse ? { course: { instructor: f.instructor.trim(), instructorRole: f.instructorRole.trim(), level: f.level, curriculum: f.curriculum } } : {}),
     }, !!editing);
   };
 
@@ -341,11 +382,32 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
                 {TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_META[t].label}</option>)}
               </select>
             </div>
-            <div className="fg">
-              <label className="lbl">Duration <span className="lbl-opt">optional</span></label>
-              <input className="field" placeholder="e.g. 18:42 or 1h 12m"
-                value={f.duration} onChange={(e) => set("duration", e.target.value)} />
-            </div>
+            {f.type === "course" ? (
+              <div className="fg">
+                <label className="lbl">Instructor</label>
+                <input className="field" placeholder="e.g. KJ" value={f.instructor} onChange={(e) => set("instructor", e.target.value)} />
+              </div>
+            ) : (
+              <div className="fg">
+                <label className="lbl">Duration <span className="lbl-opt">optional</span></label>
+                <input className="field" placeholder="e.g. 18:42 or 1h 12m"
+                  value={f.duration} onChange={(e) => set("duration", e.target.value)} />
+              </div>
+            )}
+            {f.type === "course" && (
+              <React.Fragment>
+                <div className="fg">
+                  <label className="lbl">Instructor role</label>
+                  <input className="field" placeholder="e.g. Regional Director" value={f.instructorRole} onChange={(e) => set("instructorRole", e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="lbl">Level</label>
+                  <select className="field" value={f.level} onChange={(e) => set("level", e.target.value)}>
+                    {COURSE_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+              </React.Fragment>
+            )}
 
             <div className="fg fg-full">
               <label className="lbl">Description</label>
@@ -353,37 +415,147 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
                 value={f.desc} onChange={(e) => set("desc", e.target.value)} />
             </div>
 
-            <div className="fg fg-full">
-              <label className="lbl">Source</label>
-              <div className="seg">
-                <button type="button" className={f.sourceMode === "link" ? "seg-on" : ""} onClick={() => set("sourceMode", "link")}>Link / URL</button>
-                <button type="button" className={f.sourceMode === "upload" ? "seg-on" : ""} onClick={() => set("sourceMode", "upload")}>Upload file</button>
-              </div>
-              {f.sourceMode === "link" ? (
-                <input className="field" placeholder="Vimeo / Google Drive / direct URL"
-                  value={f.link} onChange={(e) => set("link", e.target.value)} />
-              ) : (
-                <div className="drop"
-                  onClick={() => fileRef.current && fileRef.current.click()}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    const file = e.dataTransfer.files[0];
-                    if (file) setF((p) => ({ ...p, fileName: file.name, fileObj: file }));
-                  }}
-                >
-                  <input ref={fileRef} type="file" hidden
-                    onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (file) setF((p) => ({ ...p, fileName: file.name, fileObj: file }));
-                    }} />
-                  <div className="drop-ico"><I.upload /></div>
-                  <div className="drop-main">{f.fileName ? f.fileName : <>Drop a file or <b>browse</b></>}</div>
-                  <div className="drop-sub">{f.fileName ? (uploading ? "Uploading…" : "Ready — will upload on save") : "PDF, MP4, DOCX up to 200MB"}</div>
+            {f.type !== "course" && (
+              <div className="fg fg-full">
+                <label className="lbl">Source</label>
+                <div className="seg">
+                  <button type="button" className={f.sourceMode === "link" ? "seg-on" : ""} onClick={() => set("sourceMode", "link")}>Link / URL</button>
+                  <button type="button" className={f.sourceMode === "upload" ? "seg-on" : ""} onClick={() => set("sourceMode", "upload")}>Upload file</button>
                 </div>
-              )}
-              {uploadErr && <span className="field-hint" style={{ color: "var(--red)" }}>{uploadErr}</span>}
-            </div>
+                {f.sourceMode === "link" ? (
+                  <input className="field" placeholder="Vimeo / Google Drive / direct URL"
+                    value={f.link} onChange={(e) => set("link", e.target.value)} />
+                ) : (
+                  <div className="drop"
+                    onClick={() => fileRef.current && fileRef.current.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files[0];
+                      if (file) setF((p) => ({ ...p, fileName: file.name, fileObj: file }));
+                    }}
+                  >
+                    <input ref={fileRef} type="file" hidden
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) setF((p) => ({ ...p, fileName: file.name, fileObj: file }));
+                      }} />
+                    <div className="drop-ico"><I.upload /></div>
+                    <div className="drop-main">{f.fileName ? f.fileName : <>Drop a file or <b>browse</b></>}</div>
+                    <div className="drop-sub">{f.fileName ? (uploading ? "Uploading…" : "Ready — will upload on save") : "PDF, MP4, DOCX up to 200MB"}</div>
+                  </div>
+                )}
+                {uploadErr && <span className="field-hint" style={{ color: "var(--red)" }}>{uploadErr}</span>}
+              </div>
+            )}
+
+            {f.type === "course" && (
+              <div className="fg fg-full">
+                <label className="lbl">Curriculum <span className="lbl-opt">drag to reorder · click Edit to open · {curriculumDuration(f.curriculum) || "0m"} of video</span></label>
+                <div className="curric">
+                  {f.curriculum.length === 0 && <p className="curric-empty">No items yet — add your first lesson below.</p>}
+                  {f.curriculum.map((c, i) => {
+                    const open = openStep === i;
+                    return (
+                      <div key={i}
+                        className={"cstep" + (c.kind === "quiz" ? " cstep-quiz" : "") + (open ? " cstep-open" : "") + (overIdx === i && dragIdx !== null && dragIdx !== i ? " cstep-drop" : "")}
+                        onDragOver={(e) => { e.preventDefault(); setOverIdx(i); }}
+                        onDrop={() => { if (dragIdx !== null) moveCurr(dragIdx, i); setDragIdx(null); setOverIdx(null); }}
+                        onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}>
+                        <div className="cstep-head">
+                          <span className="cstep-grip" draggable onDragStart={() => setDragIdx(i)} title="Drag to reorder"><I.grip /></span>
+                          <span className="curric-n">{i + 1}</span>
+                          <span className={"cstep-badge" + (c.kind === "quiz" ? " cstep-badge-quiz" : "")}>{c.kind === "quiz" ? "Quiz" : "Lesson"}</span>
+                          <span className="cstep-title">{c.title || (c.kind === "quiz" ? "Untitled quiz" : "Untitled lesson")}</span>
+                          <span className="cstep-meta">{c.kind === "quiz" ? ((c.questions ? c.questions.length : 0) + " Q · " + Math.round((c.pass || 0.7) * 100) + "%") : [c.media, c.duration].filter(Boolean).join(" · ")}</span>
+                          <button type="button" className={"btn btn-sm cstep-edit" + (open ? " cstep-edit-on" : "")} onClick={() => setOpenStep(open ? null : i)}>{open ? <React.Fragment><I.check />Done</React.Fragment> : <React.Fragment><I.edit />Edit</React.Fragment>}</button>
+                          <button type="button" className="icon-btn danger" onClick={() => delCurr(i)} aria-label="Remove"><I.trash /></button>
+                        </div>
+                        {open && (
+                          <div className="cstep-body">
+                            <div className="cstep-grid">
+                              <div className="fg">
+                                <label className="lbl">Type</label>
+                                <select className="field" value={c.kind} onChange={(e) => setCurr(i, e.target.value === "quiz"
+                                  ? { kind: "quiz", pass: c.pass || 0.7, questions: c.questions || [{ q: "", options: ["", ""], answer: 0 }] }
+                                  : { kind: "lesson", media: c.media || "video", duration: c.duration || "", link: c.link || "", blurb: c.blurb || "" })}>
+                                  <option value="lesson">Lesson</option>
+                                  <option value="quiz">Quiz</option>
+                                </select>
+                              </div>
+                              <div className="fg cstep-grid-2">
+                                <label className="lbl">Title</label>
+                                <input className="field" placeholder={c.kind === "quiz" ? "e.g. Foundations Check" : "e.g. The Mindset of a Closer"} value={c.title} onChange={(e) => setCurr(i, { title: e.target.value })} />
+                              </div>
+
+                              {c.kind === "lesson" ? (
+                                <React.Fragment>
+                                  <div className="fg">
+                                    <label className="lbl">Media</label>
+                                    <select className="field" value={c.media} onChange={(e) => setCurr(i, { media: e.target.value })}>
+                                      <option value="video">Video</option>
+                                      <option value="audio">Audio</option>
+                                    </select>
+                                  </div>
+                                  <div className="fg">
+                                    <label className="lbl">Duration</label>
+                                    <input className="field" placeholder="8:30" value={c.duration} onChange={(e) => setCurr(i, { duration: e.target.value })} />
+                                  </div>
+                                  <div className="fg cstep-grid-full">
+                                    <label className="lbl">Video / audio link <span className="lbl-opt">Vimeo, Google Drive, or direct URL</span></label>
+                                    <input className="field" placeholder="https://…" value={c.link || ""} onChange={(e) => setCurr(i, { link: e.target.value })} />
+                                  </div>
+                                  <div className="fg cstep-grid-full">
+                                    <label className="lbl">Lesson summary <span className="lbl-opt">one line shown under the title</span></label>
+                                    <textarea className="field" placeholder="What this lesson covers…" value={c.blurb || ""} onChange={(e) => setCurr(i, { blurb: e.target.value })} />
+                                  </div>
+                                </React.Fragment>
+                              ) : (
+                                <React.Fragment>
+                                  <div className="fg">
+                                    <label className="lbl">Pass mark</label>
+                                    <select className="field" value={String(c.pass || 0.7)} onChange={(e) => setCurr(i, { pass: Number(e.target.value) })}>
+                                      {PASS_MARKS.map((v) => <option key={v} value={String(v)}>{Math.round(v * 100)}% to pass</option>)}
+                                    </select>
+                                  </div>
+                                  <div className="cstep-grid-full cstep-qs">
+                                    <div className="cstep-qs-head"><span className="lbl">Questions &amp; answers</span><span className="lbl-opt">click the circle to mark the correct answer</span></div>
+                                    {(c.questions || []).map((q, qi) => (
+                                      <div key={qi} className="cq">
+                                        <div className="cq-head">
+                                          <span className="cq-n">Q{qi + 1}</span>
+                                          <input className="field field-sm cq-text" placeholder="Question text" value={q.q} onChange={(e) => setQ(i, qi, { q: e.target.value })} />
+                                          <button type="button" className="icon-btn danger" onClick={() => delQ(i, qi)} disabled={(c.questions || []).length <= 1} aria-label="Remove question"><I.trash /></button>
+                                        </div>
+                                        <div className="cq-opts">
+                                          {q.options.map((opt, oi) => (
+                                            <div key={oi} className={"cq-opt" + (q.answer === oi ? " cq-opt-correct" : "")}>
+                                              <button type="button" className="cq-radio" onClick={() => setAnswer(i, qi, oi)} title="Mark as correct answer" aria-label="Mark correct">{q.answer === oi && <I.check />}</button>
+                                              <input className="field field-sm" placeholder={"Answer " + QUIZ_KEYS[oi]} value={opt} onChange={(e) => setOpt(i, qi, oi, e.target.value)} />
+                                              <button type="button" className="icon-btn" onClick={() => delOpt(i, qi, oi)} disabled={q.options.length <= 2} aria-label="Remove option">✕</button>
+                                            </div>
+                                          ))}
+                                          <button type="button" className="cq-addopt" onClick={() => addOpt(i, qi)}><I.plus />Add answer option</button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    <button type="button" className="btn btn-sm cq-addq" onClick={() => addQ(i)}><I.plus />Add question</button>
+                                  </div>
+                                </React.Fragment>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="curric-add">
+                    <button type="button" className="btn btn-sm" onClick={() => addCurr("lesson")}><I.plus />Add lesson</button>
+                    <button type="button" className="btn btn-sm" onClick={() => addCurr("quiz")}><I.course />Add quiz</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="fg fg-full">
               <label className="lbl">Thumbnail <span className="lbl-opt">optional</span></label>

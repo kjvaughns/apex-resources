@@ -2,6 +2,7 @@
 const { useState, useMemo, useEffect, useRef } = React;
 
 const TYPE_META = {
+  course:   { label: "Course",   color: "var(--gold)", icon: "◈" },
   video:    { label: "Video",    color: "#E5484D", icon: "▶" },
   pdf:      { label: "PDF",      color: "#4C7DF0", icon: "▤" },
   training: { label: "Training", color: "var(--gold)", icon: "★" },
@@ -11,6 +12,7 @@ const TYPE_META = {
 
 const FILTERS = [
   { key: "all",      label: "All" },
+  { key: "course",   label: "Courses" },
   { key: "video",    label: "Videos" },
   { key: "pdf",      label: "PDFs" },
   { key: "training", label: "Trainings" },
@@ -650,6 +652,7 @@ function LibraryView({ t }) {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(null);
+  const [course, setCourse] = useState(null);
   const all = window.APEX_RESOURCES;
 
   const counts = useMemo(() => {
@@ -698,12 +701,15 @@ function LibraryView({ t }) {
         </div>
       ) : (
         <div className="grid">
-          {visible.map((item) => <Card key={item.id} item={item} onOpen={setActive} />)}
+          {visible.map((item) => item.type === "course"
+            ? <CourseCard key={item.id} item={item} onOpen={(it, mode) => setCourse({ item: it, mode })} />
+            : <Card key={item.id} item={item} onOpen={setActive} />)}
         </div>
       )}
 
       <Footer />
       <Modal item={active} onClose={() => setActive(null)} />
+      {course && <CourseExperience resource={course.item} startMode={course.mode} onExit={() => setCourse(null)} />}
     </main>
   );
 }
