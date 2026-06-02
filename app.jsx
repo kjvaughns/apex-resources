@@ -6,6 +6,7 @@ const TYPE_META = {
   pdf:      { label: "PDF",      color: "#4C7DF0", icon: "▤" },
   training: { label: "Training", color: "var(--gold)", icon: "★" },
   guide:    { label: "Guide",    color: "#46A758", icon: "▦" },
+  course:   { label: "Course",   color: "#9A6BE0", icon: "★" },
 };
 
 const FILTERS = [
@@ -14,6 +15,7 @@ const FILTERS = [
   { key: "pdf",      label: "PDFs" },
   { key: "training", label: "Trainings" },
   { key: "guide",    label: "Guides" },
+  { key: "course",   label: "Courses" },
 ];
 
 const APEX_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -141,8 +143,12 @@ function Badge({ type, size }) {
 
 function Card({ item, onOpen }) {
   const m = TYPE_META[item.type];
+  const handleClick = () => {
+    if (item.isCourse) { window.location.hash = "#courses/" + item.id; return; }
+    onOpen(item);
+  };
   return (
-    <button className="card" style={{ "--bc": m.color }} onClick={() => onOpen(item)}>
+    <button className="card" style={{ "--bc": m.color }} onClick={handleClick}>
       <div className="card-top">
         <Badge type={item.type} size="sm" />
         {item.isNew && <span className="new-badge">New</span>}
@@ -592,22 +598,14 @@ const HUB = [
     route: "library",
     num: "02",
     label: "Resource Library",
-    desc: "Scripts, carrier guides, trainings, and PDFs — searchable and filterable by type.",
-  },
-  {
-    route: "courses",
-    num: "03",
-    label: "Training Courses",
-    desc: "Structured courses with video lessons, quizzes, and completion certificates — learn at your own pace.",
+    desc: "Scripts, carrier guides, trainings, courses, and PDFs — searchable and filterable by type.",
   },
 ];
 
-function HomeView({ coursesData }) {
-  const courseCount = coursesData ? coursesData.courses.length : 0;
+function HomeView() {
   const meta = {
     presentations: window.APEX_PRESENTERS.length + " presenters · " + window.APEX_RECORDINGS.length + " recordings",
     library: window.APEX_RESOURCES.length + " resources",
-    courses: courseCount + " course" + (courseCount !== 1 ? "s" : ""),
   };
   return (
     <main className="container">
@@ -711,48 +709,6 @@ function LibraryView({ t }) {
 }
 
 // ── Public Course Platform ────────────────────────────────────────────────────
-
-function CoursesPage({ coursesData }) {
-  const { courses, lessonsByCourse } = coursesData;
-  if (!courses.length) return (
-    <main className="container">
-      <section className="page-head"><div className="page-head-text">
-        <p className="hero-kicker">Course Platform</p>
-        <h1 className="sec-title">No courses published yet.</h1>
-      </div></section>
-      <Footer />
-    </main>
-  );
-  return (
-    <main className="container">
-      <section className="page-head"><div className="page-head-text">
-        <p className="hero-kicker">Course Platform</p>
-        <h1 className="sec-title">Learn at your own pace.</h1>
-      </div></section>
-      <div className="crs-pub-grid">
-        {courses.map(c => {
-          const ls = lessonsByCourse[c.id] || [];
-          return (
-            <a key={c.id} className="crs-pub-card" href={"#courses/" + c.id}>
-              <div className="crs-pub-top">
-                {c.thumbnail_url
-                  ? <img src={c.thumbnail_url} alt="" className="crs-pub-thumb" />
-                  : <div className="crs-pub-thumb-ph">📚</div>}
-              </div>
-              <div className="crs-pub-body">
-                <p className="crs-pub-meta">{c.instructor_name || "APEX"} · {ls.length} lesson{ls.length !== 1 ? "s" : ""}</p>
-                <h3 className="crs-pub-title">{c.title}</h3>
-                {c.description && <p className="crs-pub-desc">{c.description}</p>}
-                <span className="crs-pub-go">Start course <span className="cta-arrow">→</span></span>
-              </div>
-            </a>
-          );
-        })}
-      </div>
-      <Footer />
-    </main>
-  );
-}
 
 function CourseLanding({ courseId, coursesData, learnerName, setLearnerName }) {
   const { courses, lessonsByCourse, quizzesByLesson } = coursesData;
@@ -1131,7 +1087,20 @@ function App() {
         .catch(() => {});
       fetch("/api/courses-public?t=" + Date.now())
         .then((r) => r.json())
-        .then((d) => { if (d.courses) setCoursesData(d); })
+        .then((d) => {
+          if (d.courses) {
+            setCoursesData(d);
+            const courseItems = (d.courses || []).map(c => ({
+              id: c.id, type: "course",
+              title: c.title, desc: c.description || "", long: c.description || "",
+              date: c.created_at?.slice(0, 10) || "", tags: [],
+              meta: `${c.lesson_count || 0} lesson${c.lesson_count !== 1 ? "s" : ""}`,
+              cta: "Start course", isCourse: true,
+            }));
+            window.APEX_RESOURCES = [...(window.APEX_RESOURCES || []).filter(r => r.type !== "course"), ...courseItems];
+            setApiRev(n => n + 1);
+          }
+        })
         .catch(() => {});
     };
     load();
@@ -1154,7 +1123,6 @@ function App() {
   const baseRoute = parts[0];
   const routeCourseId = parts[1];
   const routeLessonId = parts[2];
-  const isCoursesPage = baseRoute === "courses" && !routeCourseId;
   const isCourseLanding = baseRoute === "courses" && !!routeCourseId && !routeLessonId;
   const isCourseLesson = baseRoute === "courses" && !!routeCourseId && !!routeLessonId && routeLessonId !== "certificate";
   const isCourseCert = baseRoute === "courses" && !!routeCourseId && routeLessonId === "certificate";
@@ -1165,11 +1133,10 @@ function App() {
       <TopBar route={viewRoute} />
       {viewRoute === "presentations" ? <PresentationsView />
       : viewRoute === "library" ? <LibraryView t={t} />
-      : isCoursesPage ? <CoursesPage coursesData={coursesData} />
       : isCourseLanding ? <CourseLanding courseId={routeCourseId} coursesData={coursesData} learnerName={learnerName} setLearnerName={setLearnerName} />
       : isCourseLesson ? <CoursePlayer courseId={routeCourseId} lessonId={routeLessonId} coursesData={coursesData} learnerName={learnerName} />
       : isCourseCert ? <CourseCertificate courseId={routeCourseId} coursesData={coursesData} learnerName={learnerName} />
-      : <HomeView coursesData={coursesData} />}
+      : <HomeView />}
 
       <TweaksPanel>
         <TweakSection label="Brand" />
