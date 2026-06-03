@@ -739,8 +739,9 @@ function App() {
           if (d.presenters) window.APEX_PRESENTERS = d.presenters;
           if (d.resources) {
             const apiIds = new Set(d.resources.map((r) => r.id));
+            const draftIds = new Set(d.draftIds || []);
             window.APEX_RESOURCES = [
-              ...(window.APEX_RESOURCES || []).filter((r) => !apiIds.has(r.id)),
+              ...(window.APEX_RESOURCES || []).filter((r) => !apiIds.has(r.id) && !draftIds.has(r.id)),
               ...d.resources,
             ];
           }

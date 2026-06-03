@@ -76,13 +76,13 @@ module.exports = async (req, res) => {
 
     const presenters = kvPres || defaults.presenters;
 
-    const resources = (kvRes || defaults.resources)
-      .filter((r) => r.status === "published")
-      .map(toPublicRes);
+    const allRes = kvRes || defaults.resources;
+    const resources = allRes.filter((r) => r.status === "published").map(toPublicRes);
+    const draftIds = allRes.filter((r) => r.status !== "published").map((r) => r.id);
 
     const quickLinks = kvQL || defaults.quickLinks;
 
-    res.json({ recordings, presenters, resources, quickLinks });
+    res.json({ recordings, presenters, resources, draftIds, quickLinks });
   } catch {
     const recordings = defaults.recordings
       .filter((r) => r.status === "published")
@@ -90,6 +90,6 @@ module.exports = async (req, res) => {
     const resources = defaults.resources
       .filter((r) => r.status === "published")
       .map(toPublicRes);
-    res.json({ recordings, presenters: defaults.presenters, resources, quickLinks: defaults.quickLinks });
+    res.json({ recordings, presenters: defaults.presenters, resources, draftIds: [], quickLinks: defaults.quickLinks });
   }
 };
