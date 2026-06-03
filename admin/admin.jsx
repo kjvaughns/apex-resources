@@ -712,6 +712,7 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
   };
 
   const toggleFeat = (id) => setResources((prev) => prev.map((r) => r.id === id ? { ...r, featured: !r.featured } : r));
+  const togglePublish = (id) => setResources((prev) => prev.map((r) => r.id === id ? { ...r, status: r.status === "published" ? "draft" : "published" } : r));
 
   const FILTERS = [{ key: "all", label: "All" }, ...TYPE_ORDER.map((t) => ({ key: t, label: TYPE_META[t].plural }))];
 
@@ -772,9 +773,11 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
                   <td><span className="tbadge" style={{ "--ac": m.color }}><span className="tbadge-dot" />{m.label}</span></td>
                   <td className="td-date">{fmtDate(r.date)}</td>
                   <td>
-                    <span className={"status " + (r.status === "published" ? "status-pub" : "status-draft")}>
+                    <button className={"status status-toggle " + (r.status === "published" ? "status-pub" : "status-draft")}
+                      onClick={() => togglePublish(r.id)}
+                      title={r.status === "published" ? "Click to unpublish" : "Click to publish"}>
                       <span className="status-dot" />{r.status === "published" ? "Published" : "Draft"}
-                    </span>
+                    </button>
                   </td>
                   <td style={{ textAlign: "center" }}>
                     <button className={"feat-star" + (r.featured ? " feat-on" : "")} onClick={() => toggleFeat(r.id)} aria-label="Toggle featured">
