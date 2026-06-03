@@ -85,6 +85,7 @@ module.exports = async function handler(req, res) {
       auto_highlights: true,
       punctuate: true,
       format_text: true,
+      disfluencies: false,
     });
 
     return res.json({ id: job.id });

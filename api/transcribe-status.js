@@ -1,5 +1,27 @@
 const { AssemblyAI } = require('assemblyai');
 
+async function polishUtterances(client, transcriptId, utterances) {
+  if (!utterances.length) return utterances;
+  try {
+    const { response } = await client.lemur.task({
+      transcript_ids: [transcriptId],
+      prompt: `Polish these ${utterances.length} sales training transcript utterances. Fix grammar, remove any remaining filler words, and improve natural flow while keeping the meaning intact. Return ONLY a valid JSON array of strings — one cleaned string per utterance in the original order. No explanation, no markdown fences, just the raw JSON array.`,
+      final_model: 'default',
+      max_output_size: 4000,
+    });
+    const cleaned = JSON.parse(response.trim().replace(/^```(?:json)?\n?|```\s*$/g, ''));
+    if (Array.isArray(cleaned) && cleaned.length === utterances.length) {
+      return utterances.map((u, i) => ({
+        ...u,
+        text: typeof cleaned[i] === 'string' ? cleaned[i] : u.text,
+      }));
+    }
+  } catch (e) {
+    console.error('[lemur polish]', e.message);
+  }
+  return utterances;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
@@ -30,11 +52,13 @@ module.exports = async function handler(req, res) {
       .slice(0, 20)
       .map((k) => ({ text: k.text, count: k.count }));
 
-    const utterances = (t.utterances || []).map((u) => ({
+    const rawUtterances = (t.utterances || []).map((u) => ({
       speaker: u.speaker,
       text: u.text,
       startMs: u.start,
     }));
+
+    const utterances = await polishUtterances(client, id, rawUtterances);
 
     return res.json({
       status: 'completed',
