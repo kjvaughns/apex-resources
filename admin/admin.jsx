@@ -1024,6 +1024,48 @@ function App() {
     } catch {}
   }, []);
 
+  const transcribeResourceIfNeeded = useCallback(async (resource) => {
+    if (resource.status !== "published") return;
+    const canTranscribe = (url) => url && url !== "#" && !url.includes("docs.google.com") && !/\.(pdf|doc|docx)$/i.test(url);
+
+    let existing;
+    try { existing = await fetch("/api/transcripts").then((r) => r.json()); }
+    catch { existing = {}; }
+
+    const queue = async (id, url) => {
+      const ex = existing[id];
+      if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) return;
+      try {
+        const r = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        if (!r.ok) return;
+        const { id: jobId } = await r.json();
+        fetch("/api/transcripts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recId: id, entry: { status: "queued", jobId } }),
+        }).catch(() => {});
+      } catch {}
+    };
+
+    if ((resource.type === "video" || resource.type === "training") && canTranscribe(resource.link)) {
+      await queue(resource.id, resource.link);
+    }
+
+    if (resource.type === "course" && resource.course?.modules) {
+      for (const mod of resource.course.modules) {
+        for (const item of (mod.items || [])) {
+          if (item.kind === "lesson" && canTranscribe(item.link)) {
+            await queue(item.id, item.link);
+          }
+        }
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (!authed) return;
     const p = pw();
@@ -1070,6 +1112,7 @@ function App() {
     const updated = wasEditing ? resources.map((r) => r.id === data.id ? data : r) : [data, ...resources];
     setResources(updated);
     const ok = await apiSave("apex:resources", updated);
+    transcribeResourceIfNeeded(data);
     if (ok) toast(wasEditing ? "Changes saved" : (data.status === "draft" ? "Saved as draft" : "Resource published"));
     setRoute("manage"); setEditing(null); setPresetType(null); window.scrollTo(0, 0);
   };
