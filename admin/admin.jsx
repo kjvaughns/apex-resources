@@ -673,28 +673,93 @@ function ResourceForm({ editing, presetType, onSave, onCancel, presenters }) {
 }
 
 // ── MANAGE TABLE ────────────────────────────────────────────────────────────────
-function resTranscriptStatus(r, ts) {
-  if (!ts) return null;
-  if (r.type === "video" || r.type === "training") return ts[r.id] || null;
-  if (r.type === "course") {
-    const lessons = (r.course?.modules || []).flatMap((m) => m.items || []).filter((i) => i.kind === "lesson" && i.link && i.link !== "#");
-    if (!lessons.length) return null;
-    const entries = lessons.map((l) => ts[l.id]);
-    const done = entries.filter((e) => e?.status === "completed").length;
-    if (done === lessons.length) return { status: "completed" };
-    if (entries.some((e) => e?.status === "error")) return { status: "error" };
-    if (entries.some((e) => e && ["queued", "processing", "submitting"].includes(e.status))) return { status: "processing" };
-    return null;
-  }
-  return null;
-}
 
-function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, density, transcripts }) {
+
+function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, density, transcripts: parentTs }) {
   const [filter, setFilter] = useState(presetFilter || "all");
   const [query, setQuery] = useState("");
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
+  const [tsData, setTsData] = useState({});
+  const [tsRunning, setTsRunning] = useState(false);
+  const tsRef = useRef({});
+  const pollRef = useRef(null);
+
   useEffect(() => { if (presetFilter) setFilter(presetFilter); }, [presetFilter]);
+
+  // Keep local tsData in sync with parent poll, but local saveTs takes precedence
+  useEffect(() => {
+    if (!parentTs) return;
+    tsRef.current = { ...parentTs, ...tsRef.current };
+    setTsData({ ...tsRef.current });
+  }, [parentTs]);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  const saveTs = (id, entry) => {
+    tsRef.current = { ...tsRef.current, [id]: entry };
+    setTsData({ ...tsRef.current });
+    fetch("/api/transcripts", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recId: id, entry }) }).catch(() => {});
+  };
+
+  const pollOnce = useCallback(async () => {
+    const pending = Object.entries(tsRef.current).filter(([, v]) => ["queued", "processing"].includes(v?.status) && v?.jobId);
+    if (!pending.length) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      setTsRunning(false);
+      return;
+    }
+    for (const [id, entry] of pending) {
+      try {
+        const r = await fetch(`/api/transcribe-status?id=${entry.jobId}`);
+        const data = await r.json();
+        if (data.status && data.status !== entry.status) saveTs(id, { ...entry, ...data });
+      } catch {}
+    }
+  }, []);
+
+  const canTranscribeUrl = (url) => url && url !== "#" && !url.includes("docs.google.com") && !/\.(pdf|doc|docx)$/i.test(url);
+
+  const getItems = (r) => {
+    if (r.type === "video" || r.type === "training") return canTranscribeUrl(r.link) ? [{ id: r.id, url: r.link }] : [];
+    if (r.type === "course") return (r.course?.modules || []).flatMap((m) => m.items || [])
+      .filter((i) => i.kind === "lesson" && canTranscribeUrl(i.link)).map((i) => ({ id: i.id, url: i.link }));
+    return [];
+  };
+
+  const runAll = async () => {
+    setTsRunning(true);
+    const items = resources.filter((r) => r.status === "published").flatMap(getItems);
+    for (const { id, url } of items) {
+      const ex = tsRef.current[id];
+      if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) continue;
+      saveTs(id, { status: "submitting" });
+      try {
+        const r = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }) });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const { id: jobId } = await r.json();
+        saveTs(id, { status: "queued", jobId });
+      } catch (e) {
+        saveTs(id, { status: "error", error: e.message });
+      }
+    }
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(pollOnce, 15000);
+    pollOnce();
+  };
+
+  const rowTs = (r) => {
+    const items = getItems(r);
+    if (!items.length) return null;
+    const entries = items.map(({ id }) => tsRef.current[id]);
+    const done = entries.filter((e) => e?.status === "completed").length;
+    if (entries.some((e) => e?.status === "error")) return { status: "error", done, total: items.length };
+    if (entries.some((e) => e && ["queued","processing","submitting"].includes(e.status))) return { status: "processing", done, total: items.length };
+    if (done === items.length && done > 0) return { status: "completed", done, total: items.length };
+    return null;
+  };
 
   const canReorder = filter === "all" && !query.trim();
 
@@ -732,6 +797,12 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
 
   const FILTERS = [{ key: "all", label: "All" }, ...TYPE_ORDER.map((t) => ({ key: t, label: TYPE_META[t].plural }))];
 
+  const allItems = useMemo(() => resources.filter((r) => r.status === "published").flatMap(getItems), [resources]);
+  const tsDone = allItems.filter(({ id }) => tsRef.current[id]?.status === "completed").length;
+  const tsPending = allItems.filter(({ id }) => ["queued","processing","submitting"].includes(tsRef.current[id]?.status)).length;
+  const tsErrors = allItems.filter(({ id }) => tsRef.current[id]?.status === "error").length;
+  const allDone = allItems.length > 0 && tsDone === allItems.length;
+
   return (
     <div className="content">
       <div className="tbl-tools">
@@ -748,6 +819,19 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
         </div>
       </div>
 
+      {allItems.length > 0 && (
+        <div className="ts-bar">
+          <span className="ts-bar-info">
+            Transcripts: <strong>{tsDone}/{allItems.length}</strong> complete
+            {tsPending > 0 && <span className="ts-bar-pending"> · {tsPending} pending</span>}
+            {tsErrors > 0 && <span className="ts-bar-error"> · {tsErrors} error{tsErrors > 1 ? "s" : ""}</span>}
+          </span>
+          <button className={"btn btn-sm" + (allDone ? " btn-ghost" : " btn-gold")} onClick={runAll} disabled={tsRunning}>
+            {tsRunning ? `Transcribing… ${tsDone}/${allItems.length}` : allDone ? "✓ All done" : "Transcribe All"}
+          </button>
+        </div>
+      )}
+
       <div className="tbl-wrap" data-density={density}>
         <table className="tbl">
           <thead>
@@ -757,13 +841,14 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
               <th style={{ width: 120 }}>Type</th>
               <th style={{ width: 130 }}>Date</th>
               <th style={{ width: 120 }}>Status</th>
+              <th style={{ width: 110 }}>Transcript</th>
               <th style={{ width: 80, textAlign: "center" }}>Featured</th>
               <th style={{ width: 96, textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 ? (
-              <tr><td colSpan="7">
+              <tr><td colSpan="8">
                 <div className="tbl-empty">
                   <p className="tbl-empty-big">No resources found</p>
                   <p className="tbl-empty-sub">Try a different search or filter.</p>
@@ -784,19 +869,6 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
                     <div className="tr-title">
                       <span className="tr-title-main">{r.title}</span>
                       <span className="tr-title-sub">{r.desc.length > 64 ? r.desc.slice(0, 64) + "…" : r.desc}</span>
-                      {(() => {
-                        const ts = resTranscriptStatus(r, transcripts);
-                        if (!ts) return null;
-                        const cfg = {
-                          completed: { color: "#46A758", label: "Transcript ready" },
-                          processing: { color: "#C9A84C", label: "Transcribing…" },
-                          queued:     { color: "#C9A84C", label: "Queued" },
-                          submitting: { color: "#C9A84C", label: "Queued" },
-                          error:      { color: "#E5484D", label: "Transcript error" },
-                        }[ts.status] || null;
-                        if (!cfg) return null;
-                        return <span className="ts-pill" style={{ "--tsc": cfg.color }}>{cfg.label}</span>;
-                      })()}
                     </div>
                   </td>
                   <td><span className="tbadge" style={{ "--ac": m.color }}><span className="tbadge-dot" />{m.label}</span></td>
@@ -811,6 +883,13 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
                       </span>
                     </label>
                   </td>
+                  <td>{(() => {
+                    const ts = rowTs(r);
+                    if (!ts) return <span style={{ color: "var(--muted-2)", fontSize: 12 }}>—</span>;
+                    if (ts.status === "completed") return <span style={{ color: "#46A758", fontSize: 12, fontWeight: 600 }}>✓ Done{ts.total > 1 ? ` ${ts.done}/${ts.total}` : ""}</span>;
+                    if (ts.status === "error") return <span style={{ color: "var(--red)", fontSize: 12 }}>Error</span>;
+                    return <span style={{ color: "var(--gold)", fontSize: 12, textTransform: "capitalize" }}>{ts.status === "submitting" ? "Queued" : ts.status}{ts.total > 1 ? ` ${ts.done}/${ts.total}` : ""}</span>;
+                  })()}</td>
                   <td style={{ textAlign: "center" }}>
                     <button className={"feat-star" + (r.featured ? " feat-on" : "")} onClick={() => toggleFeat(r.id)} aria-label="Toggle featured">
                       {I.star(r.featured)}
@@ -1054,47 +1133,6 @@ function App() {
     } catch {}
   }, []);
 
-  const transcribeResourceIfNeeded = useCallback(async (resource) => {
-    if (resource.status !== "published") return;
-    const canTranscribe = (url) => url && url !== "#" && !url.includes("docs.google.com") && !/\.(pdf|doc|docx)$/i.test(url);
-
-    let existing;
-    try { existing = await fetch("/api/transcripts").then((r) => r.json()); }
-    catch { existing = {}; }
-
-    const queue = async (id, url) => {
-      const ex = existing[id];
-      if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) return;
-      try {
-        const r = await fetch("/api/transcribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        });
-        if (!r.ok) return;
-        const { id: jobId } = await r.json();
-        fetch("/api/transcripts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recId: id, entry: { status: "queued", jobId } }),
-        }).catch(() => {});
-      } catch {}
-    };
-
-    if ((resource.type === "video" || resource.type === "training") && canTranscribe(resource.link)) {
-      await queue(resource.id, resource.link);
-    }
-
-    if (resource.type === "course" && resource.course?.modules) {
-      for (const mod of resource.course.modules) {
-        for (const item of (mod.items || [])) {
-          if (item.kind === "lesson" && canTranscribe(item.link)) {
-            await queue(item.id, item.link);
-          }
-        }
-      }
-    }
-  }, []);
 
   useEffect(() => {
     if (!authed) return;
@@ -1125,7 +1163,6 @@ function App() {
         setPresenters(d.presenters);
         setResources(d.resources);
         if (d.quickLinks) setQuickLinks(d.quickLinks);
-        d.resources.filter((r) => r.status === "published").forEach((r) => transcribeResourceIfNeeded(r));
       })
       .catch(() => toast("Failed to load data — check DB config", true));
   }, [authed]);
@@ -1151,7 +1188,6 @@ function App() {
     const updated = wasEditing ? resources.map((r) => r.id === data.id ? data : r) : [data, ...resources];
     setResources(updated);
     const ok = await apiSave("apex:resources", updated);
-    transcribeResourceIfNeeded(data);
     if (ok) toast(wasEditing ? "Changes saved" : (data.status === "draft" ? "Saved as draft" : "Resource published"));
     setRoute("manage"); setEditing(null); setPresetType(null); window.scrollTo(0, 0);
   };

@@ -287,8 +287,9 @@
   .status-pub .status-dot { background: var(--green); }
   .status-draft { color: var(--muted); background: var(--surface-3); }
   .status-draft .status-dot { background: var(--muted); }
-  .ts-pill { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 20px; color: var(--tsc); background: color-mix(in srgb, var(--tsc) 14%, transparent); }
-  .ts-pill::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--tsc); flex-shrink: 0; }
+  .ts-bar { display: flex; align-items: center; justify-content: space-between; padding: 7px 0 12px; border-bottom: 1px solid var(--line); margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+  .ts-bar-pending { color: var(--gold); margin-left: 8px; }
+  .ts-bar-error { color: var(--red); margin-left: 8px; }
   .pub-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
   .pub-track { position: relative; width: 34px; height: 18px; border-radius: 9px; background: var(--surface-3); border: 1px solid rgba(255,255,255,.08); transition: background .18s; flex-shrink: 0; }
   .pub-track.pub-on { background: var(--green); border-color: transparent; }
@@ -697,6 +698,6 @@
   <script type="text/babel" src="tweaks-panel.jsx"></script>
   <script type="text/babel" src="admin-icons.jsx?v=4"></script>
   <script type="text/babel" src="admin-recordings.jsx?v=4"></script>
-  <script type="text/babel" src="admin.jsx?v=10"></script>
+  <script type="text/babel" src="admin.jsx?v=11"></script>
 </body>
 </html>
