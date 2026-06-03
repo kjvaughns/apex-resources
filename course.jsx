@@ -95,7 +95,7 @@ function isStepUnlocked(steps, state, gi) {
   return gi <= u;
 }
 
-/* ---------- transcript localStorage helpers ---------- */
+/* ---------- transcript helpers (reads from KV via API, caches in localStorage) ---------- */
 const TS_KEY = "apex_ts_v1";
 function tsGet(id) {
   try { return (JSON.parse(localStorage.getItem(TS_KEY) || "{}")[id]) || null; } catch { return null; }
@@ -109,6 +109,24 @@ function useTranscriptEntry(id) {
     return () => window.removeEventListener("apex_ts", h);
   }, [id]);
   return entry;
+}
+let _tsFetched = false;
+function useSyncTranscripts() {
+  useEffect(() => {
+    if (_tsFetched) return;
+    _tsFetched = true;
+    fetch("/api/transcripts")
+      .then((r) => r.json())
+      .then((all) => {
+        try {
+          const store = JSON.parse(localStorage.getItem(TS_KEY) || "{}");
+          Object.assign(store, all);
+          localStorage.setItem(TS_KEY, JSON.stringify(store));
+          window.dispatchEvent(new CustomEvent("apex_ts", { detail: null }));
+        } catch {}
+      })
+      .catch(() => {});
+  }, []);
 }
 
 /* ---------- transcript generator ---------- */
@@ -756,6 +774,7 @@ function Completion({ resource, course, state, onBack, onReview }) {
 
 /* ===================== ORCHESTRATOR ===================== */
 function CourseExperience({ resource, startMode = "landing", onExit }) {
+  useSyncTranscripts();
   const course = resource.course;
   const steps = useMemo(() => flatten(course), [resource.id]);
   const [identity, setIdentity] = useState(() => readIdentity());
