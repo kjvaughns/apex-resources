@@ -1,6 +1,89 @@
 // APEX Financial Empire — Internal Resource Library data
-// type: 'video' | 'pdf' | 'training' | 'guide'
+// type: 'video' | 'pdf' | 'training' | 'guide' | 'course'
 window.APEX_RESOURCES = [
+  {
+    id: "phone-sales-mastery",
+    type: "course",
+    title: "Phone Sales Mastery",
+    desc: "The complete APEX phone-selling system — from the verification intro to assuming the sale. Lessons, quizzes, and a certificate.",
+    long: "A start-to-finish course on selling life insurance over the phone the APEX way. Work through every stage of the call — mindset, tonality, the verification intro, qualifying questions, objection handling, and the close — then prove it with a short quiz after each module. Finish all six lessons to earn your APEX certificate.",
+    date: "May 30, 2026",
+    meta: "Course · 6 lessons",
+    cta: "Start Course",
+    tags: ["course", "phone sales", "objections", "closing", "training"],
+    course: {
+      instructor: "KJ",
+      instructorRole: "Regional Director",
+      level: "Core Curriculum",
+      learn: [
+        "Open every call with a verification intro that holds the line",
+        "Control your tonality and pace so the prospect leans in",
+        "Ask qualifying questions that build the case for coverage",
+        "Handle the price objection without ever dropping the price",
+        "Assume the sale and walk the client through the close",
+        "Build the daily activity habits that compound into production",
+      ],
+      modules: [
+        {
+          title: "The Foundation",
+          items: [
+            { id: "l1", kind: "lesson", title: "The Mindset of a Closer", media: "video", duration: "8:30",
+              blurb: "Why selling is a learnable skill — and the beliefs that separate top producers from everyone else." },
+            { id: "l2", kind: "lesson", title: "Owning Your Tonality", media: "audio", duration: "11:15",
+              blurb: "Slow down, lower your tone, and let silence do the heavy lifting on every call." },
+            { id: "q1", kind: "quiz", title: "Foundations Check", pass: 0.67, questions: [
+              { q: "What does KJ say selling fundamentally is?",
+                options: ["A learnable skill", "A natural-born talent", "Purely a numbers game", "A matter of luck"], answer: 0 },
+              { q: "On a call, your tonality should be:",
+                options: ["Fast and high-energy", "Slow and controlled so you own the conversation", "Matched exactly to the prospect", "Loud enough to dominate"], answer: 1 },
+              { q: "After you ask a key question, you should:",
+                options: ["Keep talking to fill the silence", "Be quiet and let the silence work", "Immediately offer a discount", "Move on quickly"], answer: 1 },
+            ] },
+          ],
+        },
+        {
+          title: "The Call Framework",
+          items: [
+            { id: "l3", kind: "lesson", title: "The Verification Intro", media: "video", duration: "9:45",
+              blurb: "The benefits-coordinator opener that earns you the next sixty seconds of the call." },
+            { id: "l4", kind: "lesson", title: "Qualifying Questions That Sell", media: "video", duration: "12:20",
+              blurb: "Surface the income, debt, and dependents that make the right coverage amount obvious." },
+            { id: "l5", kind: "lesson", title: "Beating the Price Objection", media: "audio", duration: "10:05",
+              blurb: "Reframe “it costs too much” around the value of the protection — and hold your price." },
+            { id: "q2", kind: "quiz", title: "Framework Mastery", pass: 0.75, questions: [
+              { q: "The purpose of the verification intro is to:",
+                options: ["Close the sale immediately", "Earn the next sixty seconds of the call", "Collect payment info", "Ask for referrals"], answer: 1 },
+              { q: "Qualifying questions are designed to surface:",
+                options: ["The prospect's favorite color", "Income, debt, and dependents", "Competitor pricing", "Nothing — they're small talk"], answer: 1 },
+              { q: "When a prospect says “it costs too much,” you should:",
+                options: ["Drop the price right away", "Reframe around the value of the protection", "End the call politely", "Repeat the price louder"], answer: 1 },
+              { q: "Activity — your dials — is best described as:",
+                options: ["Optional once experienced", "What drives your income, with no shortcuts", "Only for slow weeks", "A vanity metric"], answer: 1 },
+            ] },
+          ],
+        },
+        {
+          title: "The Close",
+          items: [
+            { id: "l6", kind: "lesson", title: "Assuming the Sale", media: "video", duration: "7:50",
+              blurb: "Stop asking for the sale. Start confidently walking the client through it." },
+            { id: "q3", kind: "quiz", title: "Certification Exam", pass: 0.8, questions: [
+              { q: "The close should be approached by:",
+                options: ["Asking “so do you want it?”", "Assuming the sale and walking them through it", "Waiting for the client to bring it up", "Sending a follow-up email"], answer: 1 },
+              { q: "Building value before the close means:",
+                options: ["Talking about price first", "Establishing the protection's worth so the close is natural", "Rushing to payment", "Skipping the needs analysis"], answer: 1 },
+              { q: "A consistent producer relies most on:",
+                options: ["One big lucky month", "Coachability and consistency that compound", "Avoiding the phone on slow days", "Memorizing one script forever"], answer: 1 },
+              { q: "Repetition, per the trainings, is:",
+                options: ["A waste of time", "The mother of skill — drill it until it’s second nature", "Only for new agents", "Less important than talent"], answer: 1 },
+              { q: "The right coverage amount becomes obvious when you:",
+                options: ["Guess based on age", "Run a needs analysis that surfaces the real gap", "Always sell the cheapest plan", "Let the client decide alone"], answer: 1 },
+            ] },
+          ],
+        },
+      ],
+    },
+  },
   {
     id: "playbook",
     type: "pdf",

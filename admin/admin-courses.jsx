@@ -14,13 +14,14 @@ async function cSave(key, data) {
 }
 
 function blankCourse() {
-  return { title: "", description: "", thumbnail_url: "", instructor_name: "", is_published: false };
+  return { title: "", description: "", thumbnail_url: "", instructor_name: "",
+    instructor_role: "", level: "Core Curriculum", learn: [], is_published: false };
 }
 
 function blankLesson(courseId, orderIndex) {
-  return { title: "", media_url: "", media_type: "video", duration_seconds: 0,
-    transcript: null, transcript_job_id: null, transcript_status: null, is_published: true,
-    course_id: courseId, order_index: orderIndex };
+  return { title: "", media_url: "", media_type: "video", duration_seconds: 0, blurb: "",
+    quiz_pass: 0.7, transcript: null, transcript_job_id: null, transcript_status: null,
+    is_published: true, course_id: courseId, order_index: orderIndex };
 }
 
 function blankQuestion(orderIndex) {
@@ -83,6 +84,9 @@ function CourseForm({ editing, courses, setCourses, onBack, onManage, toast }) {
     const course = {
       ...f, title: f.title.trim(), description: f.description.trim(),
       instructor_name: f.instructor_name.trim(),
+      instructor_role: (f.instructor_role || "").trim(),
+      level: f.level || "Core Curriculum",
+      learn: f.learn || [],
       id: editing ? editing.id : "course-" + Date.now().toString(36),
       is_published: publish !== undefined ? publish : f.is_published,
       created_at: editing ? editing.created_at : new Date().toISOString(),
@@ -114,13 +118,30 @@ function CourseForm({ editing, courses, setCourses, onBack, onManage, toast }) {
             </div>
             <div className="fg">
               <label className="lbl">Instructor name</label>
-              <input className="field" placeholder="e.g. KJ Vaughns" value={f.instructor_name}
+              <input className="field" placeholder="e.g. KJ" value={f.instructor_name}
                 onChange={e => set("instructor_name", e.target.value)} />
+            </div>
+            <div className="fg">
+              <label className="lbl">Instructor role</label>
+              <input className="field" placeholder="e.g. Regional Director" value={f.instructor_role || ""}
+                onChange={e => set("instructor_role", e.target.value)} />
+            </div>
+            <div className="fg">
+              <label className="lbl">Level</label>
+              <select className="field" value={f.level || "Core Curriculum"} onChange={e => set("level", e.target.value)}>
+                {["Core Curriculum", "Onboarding", "Intermediate", "Advanced"].map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
             </div>
             <div className="fg">
               <label className="lbl">Thumbnail URL <span className="lbl-opt">optional</span></label>
               <input className="field" placeholder="https://…" value={f.thumbnail_url}
                 onChange={e => set("thumbnail_url", e.target.value)} />
+            </div>
+            <div className="fg fg-full">
+              <label className="lbl">What you'll learn <span className="lbl-opt">one bullet per line</span></label>
+              <textarea className="field" style={{minHeight:100}} placeholder={"Open every call with a verification intro\nControl your tonality and pace\nHandle the price objection…"}
+                value={(f.learn || []).join("\n")}
+                onChange={e => set("learn", e.target.value.split("\n").map(s => s.trim()).filter(Boolean))} />
             </div>
           </div>
           <div className="form-foot">
@@ -397,6 +418,23 @@ function LessonForm({ lesson, course, lessons, saveLessons, onBack, toast }) {
                   Trigger transcription
                 </button>
               )}
+            </div>
+            <div className="fg fg-full">
+              <label className="lbl">Lesson summary <span className="lbl-opt">one line shown under the title in the player</span></label>
+              <textarea className="field" placeholder="What this lesson covers…" value={f.blurb || ""}
+                onChange={e => set("blurb", e.target.value)} />
+            </div>
+            <div className="fg">
+              <label className="lbl">Quiz pass mark <span className="lbl-opt">for this lesson's quiz</span></label>
+              <select className="field" value={String(f.quiz_pass || 0.7)} onChange={e => set("quiz_pass", Number(e.target.value))}>
+                <option value="0.5">50% to pass</option>
+                <option value="0.6">60% to pass</option>
+                <option value="0.67">67% to pass</option>
+                <option value="0.7">70% to pass</option>
+                <option value="0.75">75% to pass</option>
+                <option value="0.8">80% to pass</option>
+                <option value="0.9">90% to pass</option>
+              </select>
             </div>
             <div className="fg fg-full">
               <label className="lbl">Published</label>
