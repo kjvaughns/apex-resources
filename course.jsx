@@ -333,6 +333,15 @@ function Landing({ resource, course, state, onEnroll, onResume, onViewCert, onOp
 }
 
 /* ===================== LESSON MEDIA ===================== */
+function toEmbedUrl(src) {
+  if (!src || src === "#") return null;
+  const m = src.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
+  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+  const v = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?#]+)/);
+  if (v) return `https://www.youtube.com/embed/${v[1]}`;
+  return src;
+}
+
 function LessonMedia({ step }) {
   const total = durToSec(step.duration);
   const transcript = useMemo(() => makeTranscript(step, total), [step.id, total]);
@@ -340,6 +349,10 @@ function LessonMedia({ step }) {
   const [cur, setCur] = useState(0);
   const tick = useRef(null), scrollRef = useRef(null);
   const [openTs, setOpenTs] = useState(true);
+
+  const embedUrl = toEmbedUrl(step.link);
+  const hasEmbed = !!embedUrl;
+  const isAudio = step.media === "audio";
 
   useEffect(() => { setPlaying(false); setCur(0); }, [step.id]);
   useEffect(() => {
@@ -358,30 +371,38 @@ function LessonMedia({ step }) {
   const pct = total ? (cur / total) * 100 : 0;
   const toggle = () => { if (cur >= total) setCur(0); setPlaying((p) => !p); };
   const seek = (e) => { const r = e.currentTarget.getBoundingClientRect(); setCur(Math.round(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * total)); };
-  const isAudio = step.media === "audio";
 
   return (
     <>
-      <div className={"co-media" + (isAudio ? " co-media-audio" : "") + (playing ? " co-playing" : "")} onClick={toggle}>
-        {isAudio ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-            <div className="co-media-wave">{Array.from({ length: 19 }).map((_, i) => <i key={i} style={{ height: 16 + ((i * 37) % 40), animationDelay: (i * 0.07) + "s" }} />)}</div>
-            <button className="co-media-play" aria-label={playing ? "Pause" : "Play"}>{playing ? <CIcon.pause /> : <CIcon.play />}</button>
-          </div>
-        ) : (
-          <button className="co-media-play" aria-label={playing ? "Pause" : "Play"}>{playing ? <CIcon.pause /> : <CIcon.play />}</button>
-        )}
-        <span className="co-media-tag">{isAudio ? "audio lesson placeholder" : "video lesson placeholder · 1920×1080"}</span>
-        {playing && <span className="co-media-badge"><span className="co-media-dot" /> Playing</span>}
-      </div>
-
-      <div className="co-bar">
-        <button className="co-bar-btn" onClick={toggle} aria-label={playing ? "Pause" : "Play"}>{playing ? <CIcon.pause /> : <CIcon.play />}</button>
-        <div className="co-bar-main">
-          <div className="co-bar-track" onClick={seek}><div className="co-bar-fill" style={{ width: pct + "%" }}><span className="co-bar-knob" /></div></div>
-          <div className="co-bar-times"><span>{fmt(cur)}</span><span>{fmt(total)}</span></div>
+      {hasEmbed ? (
+        <div className={"co-media" + (isAudio ? " co-media-audio" : "")}>
+          <iframe src={embedUrl} title={step.title} allow="autoplay; fullscreen"
+            allowFullScreen style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} />
         </div>
-      </div>
+      ) : (
+        <div className={"co-media" + (isAudio ? " co-media-audio" : "") + (playing ? " co-playing" : "")} onClick={toggle}>
+          {isAudio ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <div className="co-media-wave">{Array.from({ length: 19 }).map((_, i) => <i key={i} style={{ height: 16 + ((i * 37) % 40), animationDelay: (i * 0.07) + "s" }} />)}</div>
+              <button className="co-media-play" aria-label={playing ? "Pause" : "Play"}>{playing ? <CIcon.pause /> : <CIcon.play />}</button>
+            </div>
+          ) : (
+            <button className="co-media-play" aria-label={playing ? "Pause" : "Play"}>{playing ? <CIcon.pause /> : <CIcon.play />}</button>
+          )}
+          <span className="co-media-tag">{isAudio ? "audio lesson" : "video lesson"}</span>
+          {playing && <span className="co-media-badge"><span className="co-media-dot" /> Playing</span>}
+        </div>
+      )}
+
+      {!hasEmbed && (
+        <div className="co-bar">
+          <button className="co-bar-btn" onClick={toggle} aria-label={playing ? "Pause" : "Play"}>{playing ? <CIcon.pause /> : <CIcon.play />}</button>
+          <div className="co-bar-main">
+            <div className="co-bar-track" onClick={seek}><div className="co-bar-fill" style={{ width: pct + "%" }}><span className="co-bar-knob" /></div></div>
+            <div className="co-bar-times"><span>{fmt(cur)}</span><span>{fmt(total)}</span></div>
+          </div>
+        </div>
+      )}
 
       <div className="co-panels">
         <div className={"co-disc" + (openTs ? " co-disc-open" : "")}>
