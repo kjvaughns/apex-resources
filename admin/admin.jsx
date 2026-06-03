@@ -675,7 +675,7 @@ function ResourceForm({ editing, presetType, onSave, onCancel, presenters }) {
 // ── MANAGE TABLE ────────────────────────────────────────────────────────────────
 
 
-function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, density, transcripts: parentTs }) {
+function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, density, transcripts: parentTs, onToast }) {
   const [filter, setFilter] = useState(presetFilter || "all");
   const [query, setQuery] = useState("");
   const [dragId, setDragId] = useState(null);
@@ -731,20 +731,28 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
   const runAll = async () => {
     setTsRunning(true);
     const items = resources.filter((r) => r.status === "published").flatMap(getItems);
+    if (!items.length) { setTsRunning(false); return; }
+    let errCount = 0;
+    let lastErr = "";
     for (const { id, url } of items) {
       const ex = tsRef.current[id];
       if (ex && ["completed", "queued", "processing", "submitting"].includes(ex.status)) continue;
-      saveTs(id, { status: "submitting" });
       try {
+        saveTs(id, { status: "submitting" });
         const r = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }) });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const { id: jobId } = await r.json();
-        saveTs(id, { status: "queued", jobId });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        if (!j.id) throw new Error("No job ID returned");
+        saveTs(id, { status: "queued", jobId: j.id });
       } catch (e) {
+        console.error("[transcribe]", id, url, e.message);
         saveTs(id, { status: "error", error: e.message });
+        errCount++;
+        lastErr = e.message;
       }
     }
+    if (errCount > 0 && onToast) onToast(`Transcription error: ${lastErr}`, true);
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(pollOnce, 15000);
     pollOnce();
@@ -755,7 +763,8 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
     if (!items.length) return null;
     const entries = items.map(({ id }) => tsRef.current[id]);
     const done = entries.filter((e) => e?.status === "completed").length;
-    if (entries.some((e) => e?.status === "error")) return { status: "error", done, total: items.length };
+    const errEntry = entries.find((e) => e?.status === "error");
+    if (errEntry) return { status: "error", done, total: items.length, error: errEntry.error };
     if (entries.some((e) => e && ["queued","processing","submitting"].includes(e.status))) return { status: "processing", done, total: items.length };
     if (done === items.length && done > 0) return { status: "completed", done, total: items.length };
     return null;
@@ -887,7 +896,7 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
                     const ts = rowTs(r);
                     if (!ts) return <span style={{ color: "var(--muted-2)", fontSize: 12 }}>—</span>;
                     if (ts.status === "completed") return <span style={{ color: "#46A758", fontSize: 12, fontWeight: 600 }}>✓ Done{ts.total > 1 ? ` ${ts.done}/${ts.total}` : ""}</span>;
-                    if (ts.status === "error") return <span style={{ color: "var(--red)", fontSize: 12 }}>Error</span>;
+                    if (ts.status === "error") return <span style={{ color: "var(--red)", fontSize: 12 }} title={ts.error || "Transcription failed"}>Error{ts.error ? ": " + ts.error.slice(0, 40) : ""}</span>;
                     return <span style={{ color: "var(--gold)", fontSize: 12, textTransform: "capitalize" }}>{ts.status === "submitting" ? "Queued" : ts.status}{ts.total > 1 ? ` ${ts.done}/${ts.total}` : ""}</span>;
                   })()}</td>
                   <td style={{ textAlign: "center" }}>
@@ -1276,7 +1285,7 @@ function App() {
         )}
         {route === "manage" && (
           <ManageTable resources={resources} setResources={setResourcesAndSave}
-            onEdit={openEdit} onDelete={(r) => setToDelete({ item: r, kind: "resource" })} presetFilter={presetFilter} density={t.density} transcripts={transcripts} />
+            onEdit={openEdit} onDelete={(r) => setToDelete({ item: r, kind: "resource" })} presetFilter={presetFilter} density={t.density} transcripts={transcripts} onToast={toast} />
         )}
         {route === "recordings" && (
           <RecordingsView recordings={recordings} setRecordings={setRecordingsAndSave}
