@@ -20,11 +20,22 @@ module.exports = async (req, res) => {
     if (kvRes === null) kv.set("apex:resources", defaults.resources).catch(() => {});
     if (kvQL === null) kv.set("apex:quicklinks", defaults.quickLinks).catch(() => {});
 
+    // Merge any default resources missing from KV (e.g. phone-sales-mastery added after seed)
+    let resources = kvRes || defaults.resources;
+    if (kvRes !== null) {
+      const existingIds = new Set(kvRes.map((r) => r.id));
+      const missing = defaults.resources.filter((r) => !existingIds.has(r.id));
+      if (missing.length > 0) {
+        resources = [...missing, ...kvRes];
+        kv.set("apex:resources", resources).catch(() => {});
+      }
+    }
+
     res.json({
       ok: true,
       recordings: kvRecs || defaults.recordings,
       presenters: kvPres || defaults.presenters,
-      resources: kvRes || defaults.resources,
+      resources,
       quickLinks: kvQL || defaults.quickLinks,
     });
   } catch (e) {

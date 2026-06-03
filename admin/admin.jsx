@@ -288,7 +288,7 @@ function curriculumDuration(curr) {
   return m < 60 ? m + "m" : Math.floor(m / 60) + "h" + (m % 60 ? " " + (m % 60) + "m" : "");
 }
 
-function ResourceForm({ editing, presetType, onSave, onCancel }) {
+function ResourceForm({ editing, presetType, onSave, onCancel, presenters }) {
   const [f, setF] = useState(() => editing ? fromItem(editing) : blankForm(presetType));
   const [tagDraft, setTagDraft] = useState("");
   const [err, setErr] = useState(false);
@@ -409,7 +409,17 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
             {f.type === "course" ? (
               <div className="fg">
                 <label className="lbl">Instructor</label>
-                <input className="field" placeholder="e.g. KJ" value={f.instructor} onChange={(e) => set("instructor", e.target.value)} />
+                {presenters && presenters.length > 0 ? (
+                  <select className="field" value={f.instructor} onChange={(e) => {
+                    const p = presenters.find((p) => p.name === e.target.value);
+                    setF((prev) => ({ ...prev, instructor: e.target.value, instructorRole: p ? p.role : prev.instructorRole }));
+                  }}>
+                    <option value="">Select instructor…</option>
+                    {presenters.map((p) => <option key={p.id} value={p.name}>{p.name} — {p.role}</option>)}
+                  </select>
+                ) : (
+                  <input className="field" placeholder="e.g. KJ" value={f.instructor} onChange={(e) => set("instructor", e.target.value)} />
+                )}
               </div>
             ) : (
               <div className="fg">
@@ -1140,6 +1150,7 @@ function App() {
         )}
         {(route === "add" || route === "edit") && (
           <ResourceForm key={editing ? editing.id : "new-" + presetType} editing={editing} presetType={presetType}
+            presenters={presenters}
             onSave={save} onCancel={() => { setRoute(editing ? "manage" : "dashboard"); setEditing(null); }} />
         )}
         {route === "manage" && (
