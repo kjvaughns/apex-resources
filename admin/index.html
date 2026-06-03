@@ -287,8 +287,13 @@
   .status-pub .status-dot { background: var(--green); }
   .status-draft { color: var(--muted); background: var(--surface-3); }
   .status-draft .status-dot { background: var(--muted); }
-  .status-toggle { border: 0; cursor: pointer; transition: opacity .15s; }
-  .status-toggle:hover { opacity: .75; }
+  .pub-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; }
+  .pub-track { position: relative; width: 34px; height: 18px; border-radius: 9px; background: var(--surface-3); border: 1px solid rgba(255,255,255,.08); transition: background .18s; flex-shrink: 0; }
+  .pub-track.pub-on { background: var(--green); border-color: transparent; }
+  .pub-thumb { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .18s; }
+  .pub-track.pub-on .pub-thumb { transform: translateX(16px); }
+  .pub-label { font-size: 12px; font-weight: 500; color: var(--muted); }
+  .pub-label-on { color: var(--green); }
   .feat-star { background: none; border: 0; padding: 4px; color: var(--muted-2); transition: .14s; line-height: 0; }
   .feat-star svg { width: 18px; height: 18px; }
   .feat-star:hover { color: var(--gold); }
@@ -690,6 +695,6 @@
   <script type="text/babel" src="tweaks-panel.jsx"></script>
   <script type="text/babel" src="admin-icons.jsx?v=4"></script>
   <script type="text/babel" src="admin-recordings.jsx?v=4"></script>
-  <script type="text/babel" src="admin.jsx?v=6"></script>
+  <script type="text/babel" src="admin.jsx?v=7"></script>
 </body>
 </html>

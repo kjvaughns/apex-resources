@@ -773,11 +773,14 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
                   <td><span className="tbadge" style={{ "--ac": m.color }}><span className="tbadge-dot" />{m.label}</span></td>
                   <td className="td-date">{fmtDate(r.date)}</td>
                   <td>
-                    <button className={"status status-toggle " + (r.status === "published" ? "status-pub" : "status-draft")}
-                      onClick={() => togglePublish(r.id)}
-                      title={r.status === "published" ? "Click to unpublish" : "Click to publish"}>
-                      <span className="status-dot" />{r.status === "published" ? "Published" : "Draft"}
-                    </button>
+                    <label className="pub-toggle" onClick={() => togglePublish(r.id)}>
+                      <span className={"pub-track" + (r.status === "published" ? " pub-on" : "")}>
+                        <span className="pub-thumb" />
+                      </span>
+                      <span className={"pub-label" + (r.status === "published" ? " pub-label-on" : "")}>
+                        {r.status === "published" ? "Published" : "Draft"}
+                      </span>
+                    </label>
                   </td>
                   <td style={{ textAlign: "center" }}>
                     <button className={"feat-star" + (r.featured ? " feat-on" : "")} onClick={() => toggleFeat(r.id)} aria-label="Toggle featured">
@@ -986,13 +989,10 @@ function App() {
   }, [toast]);
 
   const setResourcesAndSave = useCallback(async (updater) => {
-    let next;
-    setResources((prev) => {
-      next = typeof updater === "function" ? updater(prev) : updater;
-      return next;
-    });
+    const next = typeof updater === "function" ? updater(resources) : updater;
+    setResources(next);
     await apiSave("apex:resources", next);
-  }, [apiSave]);
+  }, [apiSave, resources]);
 
   const setRecordingsAndSave = useCallback(async (updater) => {
     let next;
