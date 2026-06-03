@@ -731,7 +731,13 @@ function App() {
         .then((d) => {
           if (d.recordings) window.APEX_RECORDINGS = d.recordings;
           if (d.presenters) window.APEX_PRESENTERS = d.presenters;
-          if (d.resources) window.APEX_RESOURCES = d.resources;
+          if (d.resources) {
+            const apiIds = new Set(d.resources.map((r) => r.id));
+            window.APEX_RESOURCES = [
+              ...(window.APEX_RESOURCES || []).filter((r) => !apiIds.has(r.id)),
+              ...d.resources,
+            ];
+          }
           if (d.quickLinks) window.APEX_QUICKLINKS = d.quickLinks;
           setApiRev((n) => n + 1);
         })
