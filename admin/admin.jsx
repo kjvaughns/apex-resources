@@ -113,8 +113,6 @@ const NAV = [
   { key: "add", label: "Add Resource", icon: "plus" },
   { sect: "Site Settings" },
   { key: "quicklinks", label: "Quick Links", icon: "link" },
-  { sect: "Courses" },
-  { key: "courses", label: "Courses", icon: "list" },
 ];
 function Sidebar({ route, onNav, onLogout, count, drawerOpen, onCloseDrawer }) {
   return (
@@ -150,15 +148,15 @@ function Sidebar({ route, onNav, onLogout, count, drawerOpen, onCloseDrawer }) {
 }
 
 // ── DASHBOARD ──────────────────────────────────────────────────────────────────
-function Dashboard({ resources, recordings, presenters, courses, onNav, onAdd, onAddRec, onEditRec }) {
+function Dashboard({ resources, recordings, presenters, onNav, onAdd, onAddRec, onEditRec }) {
   const counts = useMemo(() => {
     const c = {}; for (const t of TYPE_ORDER) c[t] = 0;
     for (const r of resources) c[r.type] = (c[r.type] || 0) + 1;
     return c;
   }, [resources]);
   const pById = useMemo(() => Object.fromEntries(presenters.map((p) => [p.id, p])), [presenters]);
-  const courseCount = (courses || []).length;
-  const coursePub = (courses || []).filter(c => c.is_published).length;
+  const courseCount = counts.course || 0;
+  const coursePub = resources.filter(r => r.type === "course" && r.status === "published").length;
 
   const recent = useMemo(() => {
     const res = resources.map((r) => ({ ...r, kind: "resource", color: TYPE_META[r.type].color }));
@@ -178,8 +176,8 @@ function Dashboard({ resources, recordings, presenters, courses, onNav, onAdd, o
           <span className="stat-num">{recCount}</span>
           <span className="stat-sub">{recPub} published · {recCount - recPub} draft</span>
         </button>
-        <button className="stat" style={{ "--ac": "#46A758" }} onClick={() => onNav("courses")}>
-          <div className="stat-top"><span className="stat-ico"><I.list /></span><span className="stat-label">Courses</span></div>
+        <button className="stat" style={{ "--ac": "#9A6BE0" }} onClick={() => onNav("manage", "course")}>
+          <div className="stat-top"><span className="stat-ico"><TypeIcon type="course" /></span><span className="stat-label">Courses</span></div>
           <span className="stat-num">{courseCount}</span>
           <span className="stat-sub">{coursePub} published · {courseCount - coursePub} draft</span>
         </button>
@@ -243,11 +241,6 @@ function Dashboard({ resources, recordings, presenters, courses, onNav, onAdd, o
                 </button>
               );
             })}
-            <button className="qa" style={{ "--ac": "#46A758" }} onClick={() => onNav("courses")}>
-              <span className="qa-ico"><I.list /></span>
-              <span className="qa-text"><span className="qa-title">Manage Courses</span><span className="qa-sub">Lessons, quizzes &amp; progress</span></span>
-              <span className="qa-plus">→</span>
-            </button>
           </div>
         </div>
       </div>
@@ -260,11 +253,19 @@ function blankForm(type) {
   return { title: "", type: type || "pdf", desc: "", sourceMode: "link", link: "", fileName: "", fileObj: null,
     thumbMode: "url", thumb: "", thumbFile: "", tags: [], duration: "", featured: false, isNew: false,
     date: todayISO(), status: "published",
-    instructor: "", instructorRole: "", level: "Core Curriculum", curriculum: [] };
+    instructor: "", instructorRole: "", level: "Core Curriculum", learn: [], curriculum: [] };
 }
 const isLocalPath = (l) => l && (l.startsWith("assets/") || l.startsWith("uploads/"));
 function fromItem(item) {
   const co = item.course || {};
+  const rawItems = co.modules
+    ? co.modules.flatMap((m) => m.items)
+    : (co.curriculum || []);
+  const curriculum = rawItems.map((c, i) => ({
+    id: c.id || (c.kind === "lesson" ? "l" + i : "q" + i),
+    ...c,
+    questions: c.questions ? c.questions.map((q) => ({ ...q, options: [...q.options] })) : undefined,
+  }));
   return { ...blankForm(item.type), title: item.title, type: item.type, desc: item.desc || "",
     sourceMode: isLocalPath(item.link) ? "upload" : "link",
     link: isLocalPath(item.link) ? "" : (item.link || ""),
@@ -272,7 +273,7 @@ function fromItem(item) {
     thumb: item.thumb || "", tags: item.tags || [], duration: item.duration || "",
     featured: !!item.featured, isNew: !!item.isNew, date: item.date || todayISO(), status: item.status || "published",
     instructor: co.instructor || "", instructorRole: co.instructorRole || "", level: co.level || "Core Curriculum",
-    curriculum: co.curriculum ? co.curriculum.map((c) => ({ ...c, questions: c.questions ? c.questions.map((q) => ({ ...q, options: [...q.options] })) : undefined })) : [] };
+    learn: co.learn || [], curriculum };
 }
 
 function curriculumDuration(curr) {
@@ -300,7 +301,14 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
 
   const blankLesson = () => ({ kind: "lesson", title: "", media: "video", duration: "", link: "", blurb: "" });
   const blankQuiz = () => ({ kind: "quiz", title: "", pass: 0.7, questions: [{ q: "", options: ["", ""], answer: 0 }] });
-  const addCurr = (kind) => setF((p) => { const arr = [...p.curriculum, kind === "quiz" ? blankQuiz() : blankLesson()]; setOpenStep(arr.length - 1); return { ...p, curriculum: arr }; });
+  const addCurr = (kind) => setF((p) => {
+    const item = kind === "quiz"
+      ? { ...blankQuiz(), id: "q-" + Date.now().toString(36) }
+      : { ...blankLesson(), id: "l-" + Date.now().toString(36) };
+    const arr = [...p.curriculum, item];
+    setOpenStep(arr.length - 1);
+    return { ...p, curriculum: arr };
+  });
   const setCurr = (i, patch) => setF((p) => ({ ...p, curriculum: p.curriculum.map((c, j) => j === i ? { ...c, ...patch } : c) }));
   const delCurr = (i) => { setF((p) => ({ ...p, curriculum: p.curriculum.filter((_, j) => j !== i) })); setOpenStep(null); };
   const moveCurr = (from, to) => setF((p) => { if (to < 0 || to >= p.curriculum.length || from === to) return p; const a = [...p.curriculum]; const [m] = a.splice(from, 1); a.splice(to, 0, m); return { ...p, curriculum: a }; });
@@ -354,13 +362,27 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
     }
 
     const isCourse = f.type === "course";
+    let courseData;
+    if (isCourse) {
+      const modules = [{ title: "Course Content", items: f.curriculum.map((item, i) => ({
+        id: item.id || (item.kind === "lesson" ? "l" + i : "q" + i),
+        ...item,
+      })) }];
+      courseData = {
+        instructor: f.instructor.trim(),
+        instructorRole: f.instructorRole.trim(),
+        level: f.level,
+        learn: f.learn.filter((l) => l.trim()),
+        modules,
+      };
+    }
     onSave({
       id: editing ? editing.id : "r-" + Date.now().toString(36),
       type: f.type, title: f.title.trim(), desc: f.desc.trim(), date: f.date,
       status, featured: f.featured, isNew: f.isNew, tags,
       duration: isCourse ? curriculumDuration(f.curriculum) : f.duration.trim(),
       link: isCourse ? "#" : link, thumb: f.thumbMode === "url" ? f.thumb.trim() : f.thumbFile,
-      ...(isCourse ? { course: { instructor: f.instructor.trim(), instructorRole: f.instructorRole.trim(), level: f.level, curriculum: f.curriculum } } : {}),
+      ...(isCourse ? { course: courseData } : {}),
     }, !!editing);
   };
 
@@ -409,6 +431,15 @@ function ResourceForm({ editing, presetType, onSave, onCancel }) {
                   </select>
                 </div>
               </React.Fragment>
+            )}
+
+            {f.type === "course" && (
+              <div className="fg fg-full">
+                <label className="lbl">What you'll learn <span className="lbl-opt">one bullet per line</span></label>
+                <textarea className="field" rows={4} placeholder={"Open every call with a verification intro…\nControl your tonality and pace\nHandle the price objection without dropping the price"}
+                  value={f.learn.join("\n")}
+                  onChange={(e) => set("learn", e.target.value.split("\n"))} />
+              </div>
             )}
 
             <div className="fg fg-full">
@@ -885,11 +916,6 @@ const TITLES = {
   manage: { crumb: "Resource Library", h: "Manage Resources" },
   recordings: { crumb: "Recorded Presentations", h: "Recordings" },
   quicklinks: { crumb: "Site Settings", h: "Quick Links" },
-  courses: { crumb: "Course Platform", h: "Courses" },
-  "course-form": { crumb: "Course Platform", h: "Course" },
-  "course-detail": { crumb: "Course Platform", h: "Lessons" },
-  "lesson-form": { crumb: "Course Platform", h: "Lesson" },
-  "quiz-editor": { crumb: "Course Platform", h: "Quiz" },
 };
 
 function App() {
@@ -914,14 +940,6 @@ function App() {
   const [toasts, setToasts] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
-  const [courses, setCourses] = useState([]);
-  const [lessonsByCourse, setLessonsByCourse] = useState({});
-  const [quizzesByLesson, setQuizzesByLesson] = useState({});
-  const [editingCourse, setEditingCourse] = useState(null);
-  const [courseDetailTarget, setCourseDetailTarget] = useState(null);
-  const [editingLesson, setEditingLesson] = useState(null);
-  const [lessonContext, setLessonContext] = useState(null);
-  const [quizContext, setQuizContext] = useState(null);
   useEffect(() => {
     document.body.style.overflow = drawerOpen ? "hidden" : "";
     return () => { document.body.style.overflow = ""; };
@@ -1026,26 +1044,6 @@ function App() {
       .catch(() => toast("Failed to load data — check DB config", true));
   }, [authed]);
 
-  useEffect(() => {
-    if (!authed) return;
-    const p = pw();
-    if (!p) return;
-    fetch("/api/admin/courses-load", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: p }),
-    })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ok) {
-          setCourses(d.courses || []);
-          setLessonsByCourse(d.lessonsByCourse || {});
-          setQuizzesByLesson(d.quizzesByLesson || {});
-        }
-      })
-      .catch(() => {});
-  }, [authed]);
-
   const nav = (key, filter) => { setRoute(key); setPresetFilter(filter || null); window.scrollTo(0, 0); };
   const openAdd = (item, type) => {
     if (item) { setEditing(item); setRoute("edit"); }
@@ -1110,15 +1108,10 @@ function App() {
 
   if (!authed) return <div style={rootStyle}><Gate onUnlock={() => setAuthed(true)} /></div>;
 
-  const onForm = route === "add" || route === "edit" || route === "recording-form"
-    || route === "course-form" || route === "lesson-form" || route === "quiz-editor";
-  const sideRoute = ({
-    edit: "manage", add: "add", "recording-form": "recordings",
-    "course-form": "courses", "course-detail": "courses", "lesson-form": "courses", "quiz-editor": "courses",
-  }[route]) || route;
+  const onForm = route === "add" || route === "edit" || route === "recording-form";
+  const sideRoute = ({ edit: "manage", add: "add", "recording-form": "recordings" }[route]) || route;
   let meta = TITLES[route] || TITLES.dashboard;
   if (route === "recording-form") meta = { crumb: "Recorded Presentations", h: editing ? "Edit Recording" : "Add Recording" };
-  if (route === "course-detail" && courseDetailTarget) meta = { crumb: "Course Platform", h: courseDetailTarget.title };
 
   return (
     <div className="shell" style={rootStyle}>
@@ -1133,11 +1126,9 @@ function App() {
             <span className="topbar-h">{meta.h}</span>
           </div>
           <div className="topbar-actions">
-            {!onForm && route !== "quicklinks" && route !== "course-detail" && (
+            {!onForm && route !== "quicklinks" && (
               route === "recordings"
                 ? <button className="btn btn-gold" onClick={() => openRec(null)}><I.plus />New Recording</button>
-                : route === "courses"
-                ? <button className="btn btn-gold" onClick={() => { setEditingCourse(null); nav("course-form"); }}><I.plus />New Course</button>
                 : <button className="btn btn-gold" onClick={() => openAdd(null)}><I.plus />New Resource</button>
             )}
           </div>
@@ -1145,7 +1136,6 @@ function App() {
 
         {route === "dashboard" && (
           <Dashboard resources={resources} recordings={recordings} presenters={presenters}
-            courses={courses}
             onNav={nav} onAdd={openAdd} onAddRec={openRec} onEditRec={openRec} />
         )}
         {(route === "add" || route === "edit") && (
@@ -1168,75 +1158,6 @@ function App() {
         )}
         {route === "quicklinks" && (
           <QuickLinksView links={quickLinks} onSave={updateQuickLinks} />
-        )}
-        {route === "courses" && (
-          <CoursesView
-            courses={courses}
-            lessonsByCourse={lessonsByCourse}
-            onNew={() => { setEditingCourse(null); nav("course-form"); }}
-            onEdit={(c) => { setEditingCourse(c); nav("course-form"); }}
-            onManage={(c) => { setCourseDetailTarget(c); nav("course-detail"); }}
-            onDelete={async (c) => {
-              const updated = courses.filter(x => x.id !== c.id);
-              setCourses(updated);
-              await apiSave("apex:courses", updated);
-              toast("Course deleted");
-            }}
-          />
-        )}
-        {route === "course-form" && (
-          <CourseForm
-            key={editingCourse ? editingCourse.id : "new-course"}
-            editing={editingCourse}
-            courses={courses}
-            setCourses={setCourses}
-            onBack={() => nav("courses")}
-            onManage={(c) => { setCourseDetailTarget(c); nav("course-detail"); }}
-            toast={toast}
-          />
-        )}
-        {route === "course-detail" && courseDetailTarget && (
-          <CourseDetail
-            key={courseDetailTarget.id}
-            course={courseDetailTarget}
-            lessons={lessonsByCourse[courseDetailTarget.id] || []}
-            quizzesByLesson={quizzesByLesson}
-            setCourses={setCourses}
-            courses={courses}
-            setLessonsByCourse={setLessonsByCourse}
-            onBack={() => nav("courses")}
-            onEditLesson={(lesson, lessons, saveLessons) => {
-              setEditingLesson(lesson);
-              setLessonContext({ lessons, saveLessons });
-              nav("lesson-form");
-            }}
-            onEditQuiz={(lesson, initialQuizzes) => {
-              setQuizContext({ lesson, initialQuizzes });
-              nav("quiz-editor");
-            }}
-            toast={toast}
-          />
-        )}
-        {route === "lesson-form" && editingLesson && lessonContext && (
-          <LessonForm
-            key={editingLesson.id}
-            lesson={editingLesson}
-            course={courseDetailTarget}
-            lessons={lessonContext.lessons}
-            saveLessons={lessonContext.saveLessons}
-            onBack={() => nav("course-detail")}
-            toast={toast}
-          />
-        )}
-        {route === "quiz-editor" && quizContext && (
-          <QuizEditor
-            key={quizContext.lesson.id}
-            lesson={quizContext.lesson}
-            initialQuizzes={quizContext.initialQuizzes}
-            setQBL={(updater) => setQuizzesByLesson(updater)}
-            onBack={() => nav("course-detail")}
-            toast={toast}
-          />
         )}
       </div>
 

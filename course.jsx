@@ -248,7 +248,7 @@ function Landing({ resource, course, state, onEnroll, onResume, onViewCert, onOp
           <div className="co-land-learn">
             <h2 className="co-land-h">What you'll learn</h2>
             <div className="co-learn-grid">
-              {course.learn.map((l, i) => (
+              {(course.learn || []).map((l, i) => (
                 <div key={i} className="co-learn-item">
                   <span className="co-learn-check"><CIcon.check /></span>
                   <span>{l}</span>
