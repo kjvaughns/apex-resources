@@ -2,12 +2,11 @@
 const { useState, useMemo, useEffect, useRef } = React;
 
 const TYPE_META = {
-  course:   { label: "Course",   color: "var(--gold)", icon: "◈" },
+  course:   { label: "Course",   color: "#9A6BE0", icon: "★" },
   video:    { label: "Video",    color: "#E5484D", icon: "▶" },
   pdf:      { label: "PDF",      color: "#4C7DF0", icon: "▤" },
   training: { label: "Training", color: "var(--gold)", icon: "★" },
   guide:    { label: "Guide",    color: "#46A758", icon: "▦" },
-  course:   { label: "Course",   color: "#9A6BE0", icon: "★" },
 };
 
 const FILTERS = [
@@ -17,7 +16,6 @@ const FILTERS = [
   { key: "pdf",      label: "PDFs" },
   { key: "training", label: "Trainings" },
   { key: "guide",    label: "Guides" },
-  { key: "course",   label: "Courses" },
 ];
 
 const APEX_DEFAULTS = /*EDITMODE-BEGIN*/{
