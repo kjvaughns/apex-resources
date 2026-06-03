@@ -369,11 +369,20 @@ function Landing({ resource, course, state, onEnroll, onResume, onViewCert, onOp
 /* ===================== LESSON MEDIA ===================== */
 function toEmbedUrl(src) {
   if (!src || src === "#") return null;
-  const m = src.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
-  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
-  const v = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&?#]+)/);
-  if (v) return `https://www.youtube.com/embed/${v[1]}`;
+  const gd = src.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
+  if (gd) return `https://drive.google.com/file/d/${gd[1]}/preview`;
+  const yw = src.match(/youtube\.com\/watch.*[?&]v=([^&?#]+)/);
+  if (yw) return `https://www.youtube.com/embed/${yw[1]}`;
+  const yb = src.match(/youtu\.be\/([^?#]+)/);
+  if (yb) return `https://www.youtube.com/embed/${yb[1]}`;
+  const ys = src.match(/youtube\.com\/shorts\/([^?#]+)/);
+  if (ys) return `https://www.youtube.com/embed/${ys[1]}`;
+  const yl = src.match(/youtube\.com\/live\/([^?#]+)/);
+  if (yl) return `https://www.youtube.com/embed/${yl[1]}`;
   return src;
+}
+function isYouTubeUrl(src) {
+  return !!(src && (src.includes("youtube.com") || src.includes("youtu.be")));
 }
 
 function LessonMedia({ step }) {
@@ -445,23 +454,25 @@ function LessonMedia({ step }) {
         </div>
       )}
 
-      <div className="co-panels">
-        <div className={"co-disc" + (openTs ? " co-disc-open" : "")}>
-          <button className="co-disc-head" onClick={() => setOpenTs((o) => !o)}>
-            Transcript <span className="co-disc-note">{isRealTranscript ? "click to jump" : tsEntry?.status === "processing" || tsEntry?.status === "queued" ? "transcribing…" : "auto-generated · click to jump"}</span>
-            <span className="co-disc-chev">▶</span>
-          </button>
-          {openTs && (
-            <div className="co-disc-body" ref={scrollRef} style={{ maxHeight: 240, overflowY: "auto" }}>
-              {transcript.map((seg, i) => (
-                <button key={i} className={"co-ts-line" + (i === active ? " co-ts-line-on" : "")} onClick={() => setCur(seg.t)}>
-                  <span className="co-ts-time">{fmt(seg.t)}</span><span className="co-ts-text">{seg.text}</span>
-                </button>
-              ))}
-            </div>
-          )}
+      {!isYouTubeUrl(step.link) && (
+        <div className="co-panels">
+          <div className={"co-disc" + (openTs ? " co-disc-open" : "")}>
+            <button className="co-disc-head" onClick={() => setOpenTs((o) => !o)}>
+              Transcript <span className="co-disc-note">{isRealTranscript ? "click to jump" : tsEntry?.status === "processing" || tsEntry?.status === "queued" ? "transcribing…" : "auto-generated · click to jump"}</span>
+              <span className="co-disc-chev">▶</span>
+            </button>
+            {openTs && (
+              <div className="co-disc-body" ref={scrollRef} style={{ maxHeight: 240, overflowY: "auto" }}>
+                {transcript.map((seg, i) => (
+                  <button key={i} className={"co-ts-line" + (i === active ? " co-ts-line-on" : "")} onClick={() => setCur(seg.t)}>
+                    <span className="co-ts-time">{fmt(seg.t)}</span><span className="co-ts-text">{seg.text}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }

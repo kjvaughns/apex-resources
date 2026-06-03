@@ -67,6 +67,9 @@ module.exports = async function handler(req, res) {
     if (ct === 'application/json') {
       const body = JSON.parse((await getRawBody(req)).toString());
       if (!body.url) return res.status(400).json({ error: 'url required' });
+      if (body.url.includes('youtube.com') || body.url.includes('youtu.be')) {
+        return res.status(400).json({ error: 'YouTube URLs cannot be transcribed directly. Upload an audio file instead.' });
+      }
       if (body.url.includes('drive.google.com')) {
         const buffer = await fetchDriveBuffer(body.url.trim());
         audioUrl = await client.files.upload(buffer);

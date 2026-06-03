@@ -719,7 +719,7 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
     }
   }, []);
 
-  const canTranscribeUrl = (url) => url && url !== "#" && !url.includes("docs.google.com") && !/\.(pdf|doc|docx)$/i.test(url);
+  const canTranscribeUrl = (url) => url && url !== "#" && !url.includes("docs.google.com") && !url.includes("youtube.com") && !url.includes("youtu.be") && !/\.(pdf|doc|docx)$/i.test(url);
 
   const getItems = (r) => {
     if (r.type === "video" || r.type === "training") return canTranscribeUrl(r.link) ? [{ id: r.id, url: r.link }] : [];
