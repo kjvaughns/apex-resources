@@ -673,7 +673,23 @@ function ResourceForm({ editing, presetType, onSave, onCancel, presenters }) {
 }
 
 // ── MANAGE TABLE ────────────────────────────────────────────────────────────────
-function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, density }) {
+function resTranscriptStatus(r, ts) {
+  if (!ts) return null;
+  if (r.type === "video" || r.type === "training") return ts[r.id] || null;
+  if (r.type === "course") {
+    const lessons = (r.course?.modules || []).flatMap((m) => m.items || []).filter((i) => i.kind === "lesson" && i.link && i.link !== "#");
+    if (!lessons.length) return null;
+    const entries = lessons.map((l) => ts[l.id]);
+    const done = entries.filter((e) => e?.status === "completed").length;
+    if (done === lessons.length) return { status: "completed" };
+    if (entries.some((e) => e?.status === "error")) return { status: "error" };
+    if (entries.some((e) => e && ["queued", "processing", "submitting"].includes(e.status))) return { status: "processing" };
+    return null;
+  }
+  return null;
+}
+
+function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, density, transcripts }) {
   const [filter, setFilter] = useState(presetFilter || "all");
   const [query, setQuery] = useState("");
   const [dragId, setDragId] = useState(null);
@@ -768,6 +784,19 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
                     <div className="tr-title">
                       <span className="tr-title-main">{r.title}</span>
                       <span className="tr-title-sub">{r.desc.length > 64 ? r.desc.slice(0, 64) + "…" : r.desc}</span>
+                      {(() => {
+                        const ts = resTranscriptStatus(r, transcripts);
+                        if (!ts) return null;
+                        const cfg = {
+                          completed: { color: "#46A758", label: "Transcript ready" },
+                          processing: { color: "#C9A84C", label: "Transcribing…" },
+                          queued:     { color: "#C9A84C", label: "Queued" },
+                          submitting: { color: "#C9A84C", label: "Queued" },
+                          error:      { color: "#E5484D", label: "Transcript error" },
+                        }[ts.status] || null;
+                        if (!cfg) return null;
+                        return <span className="ts-pill" style={{ "--tsc": cfg.color }}>{cfg.label}</span>;
+                      })()}
                     </div>
                   </td>
                   <td><span className="tbadge" style={{ "--ac": m.color }}><span className="tbadge-dot" />{m.label}</span></td>
@@ -954,6 +983,7 @@ function App() {
   const [presetFilter, setPresetFilter] = useState(null);
   const [toDelete, setToDelete] = useState(null);
   const [toasts, setToasts] = useState([]);
+  const [transcripts, setTranscripts] = useState({});
   const [drawerOpen, setDrawerOpen] = useState(false);
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
   useEffect(() => {
@@ -1099,6 +1129,14 @@ function App() {
       .catch(() => toast("Failed to load data — check DB config", true));
   }, [authed]);
 
+  useEffect(() => {
+    if (!authed) return;
+    const load = () => fetch("/api/transcripts").then((r) => r.json()).then(setTranscripts).catch(() => {});
+    load();
+    const id = setInterval(load, 15000);
+    return () => clearInterval(id);
+  }, [authed]);
+
   const nav = (key, filter) => { setRoute(key); setPresetFilter(filter || null); window.scrollTo(0, 0); };
   const openAdd = (item, type) => {
     if (item) { setEditing(item); setRoute("edit"); }
@@ -1201,7 +1239,7 @@ function App() {
         )}
         {route === "manage" && (
           <ManageTable resources={resources} setResources={setResourcesAndSave}
-            onEdit={openEdit} onDelete={(r) => setToDelete({ item: r, kind: "resource" })} presetFilter={presetFilter} density={t.density} />
+            onEdit={openEdit} onDelete={(r) => setToDelete({ item: r, kind: "resource" })} presetFilter={presetFilter} density={t.density} transcripts={transcripts} />
         )}
         {route === "recordings" && (
           <RecordingsView recordings={recordings} setRecordings={setRecordingsAndSave}
