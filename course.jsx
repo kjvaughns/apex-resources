@@ -95,6 +95,22 @@ function isStepUnlocked(steps, state, gi) {
   return gi <= u;
 }
 
+/* ---------- transcript localStorage helpers ---------- */
+const TS_KEY = "apex_ts_v1";
+function tsGet(id) {
+  try { return (JSON.parse(localStorage.getItem(TS_KEY) || "{}")[id]) || null; } catch { return null; }
+}
+function useTranscriptEntry(id) {
+  const [entry, setEntry] = useState(() => tsGet(id));
+  useEffect(() => {
+    setEntry(tsGet(id));
+    const h = (e) => { if (!e.detail || e.detail.recId === id) setEntry(tsGet(id)); };
+    window.addEventListener("apex_ts", h);
+    return () => window.removeEventListener("apex_ts", h);
+  }, [id]);
+  return entry;
+}
+
 /* ---------- transcript generator ---------- */
 const CO_POOL = [
   "The first thing to understand is that this is a skill — and skills are learnable.",
@@ -344,7 +360,14 @@ function toEmbedUrl(src) {
 
 function LessonMedia({ step }) {
   const total = durToSec(step.duration);
-  const transcript = useMemo(() => makeTranscript(step, total), [step.id, total]);
+  const tsEntry = useTranscriptEntry(step.id);
+  const transcript = useMemo(() => {
+    if (tsEntry?.status === "completed" && tsEntry.utterances?.length) {
+      return tsEntry.utterances.map((u) => ({ t: Math.round((u.startMs || 0) / 1000), text: u.text }));
+    }
+    return makeTranscript(step, total);
+  }, [tsEntry?.status, tsEntry?.utterances, step.id, total]);
+  const isRealTranscript = tsEntry?.status === "completed" && tsEntry.utterances?.length > 0;
   const [playing, setPlaying] = useState(false);
   const [cur, setCur] = useState(0);
   const tick = useRef(null), scrollRef = useRef(null);
@@ -407,7 +430,7 @@ function LessonMedia({ step }) {
       <div className="co-panels">
         <div className={"co-disc" + (openTs ? " co-disc-open" : "")}>
           <button className="co-disc-head" onClick={() => setOpenTs((o) => !o)}>
-            Transcript <span className="co-disc-note">auto-generated · click to jump</span>
+            Transcript <span className="co-disc-note">{isRealTranscript ? "click to jump" : tsEntry?.status === "processing" || tsEntry?.status === "queued" ? "transcribing…" : "auto-generated · click to jump"}</span>
             <span className="co-disc-chev">▶</span>
           </button>
           {openTs && (
