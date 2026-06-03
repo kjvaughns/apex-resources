@@ -1125,6 +1125,7 @@ function App() {
         setPresenters(d.presenters);
         setResources(d.resources);
         if (d.quickLinks) setQuickLinks(d.quickLinks);
+        d.resources.filter((r) => r.status === "published").forEach((r) => transcribeResourceIfNeeded(r));
       })
       .catch(() => toast("Failed to load data — check DB config", true));
   }, [authed]);
