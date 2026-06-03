@@ -113,6 +113,8 @@ const NAV = [
   { key: "add", label: "Add Resource", icon: "plus" },
   { sect: "Site Settings" },
   { key: "quicklinks", label: "Quick Links", icon: "link" },
+  { sect: "Courses" },
+  { key: "courses", label: "Courses", icon: "list" },
 ];
 function Sidebar({ route, onNav, onLogout, count, drawerOpen, onCloseDrawer }) {
   return (

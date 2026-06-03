@@ -1046,7 +1046,7 @@ function CourseCertificate({ courseId, coursesData, learnerName }) {
       <div style={{textAlign:"center",marginTop:24}}>
         <a href={"#courses/" + courseId} style={{color:"var(--gold)",fontSize:14,fontWeight:600}}>← Back to course</a>
         <span style={{color:"var(--muted)",margin:"0 10px"}}>·</span>
-        <a href="#courses" style={{color:"var(--muted)",fontSize:14,fontWeight:600}}>All courses</a>
+        <a href="#library" style={{color:"var(--muted)",fontSize:14,fontWeight:600}}>Resource Library</a>
       </div>
       <Footer />
     </main>
