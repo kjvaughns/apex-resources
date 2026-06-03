@@ -80,7 +80,7 @@ module.exports = async function handler(req, res) {
 
     const job = await client.transcripts.submit({
       audio_url: audioUrl,
-      speech_model: "best",
+      speech_models: ["universal-3-pro"],
       speaker_labels: true,
       auto_highlights: true,
       punctuate: true,
