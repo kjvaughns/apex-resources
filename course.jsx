@@ -426,7 +426,9 @@ function LessonMedia({ step }) {
     <>
       {hasEmbed ? (
         <div className={"co-media" + (isAudio ? " co-media-audio" : "")}>
-          <iframe src={embedUrl} title={step.title} allow="autoplay; fullscreen"
+          <iframe src={embedUrl} title={step.title}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerPolicy="strict-origin-when-cross-origin"
             allowFullScreen style={{ position: "absolute", inset: 0, width: "100%", height: "100%", border: 0 }} />
         </div>
       ) : (

@@ -807,6 +807,7 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
   const FILTERS = [{ key: "all", label: "All" }, ...TYPE_ORDER.map((t) => ({ key: t, label: TYPE_META[t].plural }))];
 
   const allItems = useMemo(() => resources.filter((r) => r.status === "published").flatMap(getItems), [resources]);
+  const hasAnyMedia = useMemo(() => resources.some((r) => r.status === "published" && ["video", "training", "course"].includes(r.type)), [resources]);
   const tsDone = allItems.filter(({ id }) => tsRef.current[id]?.status === "completed").length;
   const tsPending = allItems.filter(({ id }) => ["queued","processing","submitting"].includes(tsRef.current[id]?.status)).length;
   const tsErrors = allItems.filter(({ id }) => tsRef.current[id]?.status === "error").length;
@@ -828,16 +829,22 @@ function ManageTable({ resources, setResources, onEdit, onDelete, presetFilter, 
         </div>
       </div>
 
-      {allItems.length > 0 && (
+      {hasAnyMedia && (
         <div className="ts-bar">
-          <span className="ts-bar-info">
-            Transcripts: <strong>{tsDone}/{allItems.length}</strong> complete
-            {tsPending > 0 && <span className="ts-bar-pending"> · {tsPending} pending</span>}
-            {tsErrors > 0 && <span className="ts-bar-error"> · {tsErrors} error{tsErrors > 1 ? "s" : ""}</span>}
-          </span>
-          <button className={"btn btn-sm" + (allDone ? " btn-ghost" : " btn-gold")} onClick={runAll} disabled={tsRunning}>
-            {tsRunning ? `Transcribing… ${tsDone}/${allItems.length}` : allDone ? "✓ All done" : "Transcribe All"}
-          </button>
+          {allItems.length > 0 ? (
+            <>
+              <span className="ts-bar-info">
+                Transcripts: <strong>{tsDone}/{allItems.length}</strong> complete
+                {tsPending > 0 && <span className="ts-bar-pending"> · {tsPending} pending</span>}
+                {tsErrors > 0 && <span className="ts-bar-error"> · {tsErrors} error{tsErrors > 1 ? "s" : ""}</span>}
+              </span>
+              <button className={"btn btn-sm" + (allDone ? " btn-ghost" : " btn-gold")} onClick={runAll} disabled={tsRunning}>
+                {tsRunning ? `Transcribing… ${tsDone}/${allItems.length}` : allDone ? "✓ All done" : "Transcribe All"}
+              </button>
+            </>
+          ) : (
+            <span className="ts-bar-info">YouTube videos can't be auto-transcribed — upload audio files directly for transcription</span>
+          )}
         </div>
       )}
 
