@@ -203,8 +203,10 @@ function toAbsoluteHref(href) {
 
 function toEmbedUrl(src) {
   if (!src) return src;
-  const m = src.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
-  if (m) return "https://drive.google.com/file/d/" + m[1] + "/preview";
+  const gd = src.match(/drive\.google\.com\/file\/d\/([^/?#]+)/);
+  if (gd) return "https://drive.google.com/file/d/" + gd[1] + "/preview";
+  const yt = src.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  if (yt) return "https://www.youtube.com/embed/" + yt[1];
   return src;
 }
 
@@ -416,7 +418,7 @@ function MediaPlayer({ rec, tsEntry }) {
     <div className="mp">
       {hasVideo ? (
         <div className={"media-stage " + (rec.audio ? "media-stage-audio" : "media-stage-video")}>
-          <iframe className="media-frame" src={toEmbedUrl(rec.video)} title={rec.title} allow="autoplay; fullscreen" allowFullScreen></iframe>
+          <iframe className="media-frame" src={toEmbedUrl(rec.video)} title={rec.title} allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen></iframe>
         </div>
       ) : (
         <div className="media-stage" onClick={toggle}>
